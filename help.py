@@ -18,6 +18,11 @@ def to_csv(mat_file_path, output_csv=None):
     # Create a DataFrame with the data
     df = pd.DataFrame(data, columns=headers)
 
+    # "1.0" -> "1", "0.0" -> "0"
+    for col in df.select_dtypes(include=["float64"]).columns:
+        if all(df[col].dropna().apply(lambda x: x.is_integer())):
+            df[col] = df[col].astype("Int64")
+
     # replace the FINAL_DIAG column with the actual disease names
     df["FINAL_DIAG"] = df["FINAL_DIAG"].apply(
         lambda x: diseases[int(x - 1)] if 0 < x <= len(diseases) else "Unknown"
@@ -44,6 +49,47 @@ def to_csv(mat_file_path, output_csv=None):
         output_name = os.path.splitext(os.path.basename(mat_file_path))[0] + ".csv"
         df.to_csv(output_name, index=False)
         print(f"Data saved to {output_name}")
+
+    # Calculate and save median values for feature columns
+    median_values = df.drop(columns=["FINAL_DIAG"]).median()
+
+    with open("huimausdata_median_values.txt", "w") as f:
+        for column, value in median_values.items():
+            f.write(f"{column}: {value}\n")
+
+    print("Median values saved to huimausdata_median_values.txt")
+
+    # Create a folder for boolean datasets
+    boolean_folder = "boolean_datasets"
+    if not os.path.exists(boolean_folder):
+        os.makedirs(boolean_folder)
+        print(f"Created folder {boolean_folder}")
+
+    # Get unique diseases
+    unique_diseases = df["FINAL_DIAG"].unique()
+
+    # For each disease, create a binary dataset
+    for disease in unique_diseases:
+        df_boolean = df.copy()
+
+        # Create binary FINAL_DIAG column (1 for current disease, 0 for others)
+        df_boolean["FINAL_DIAG"] = (df_boolean["FINAL_DIAG"] == disease).astype(int)
+
+        # Loop through all columns except FINAL_DIAG
+        for column in df_boolean.drop(columns=["FINAL_DIAG"]):
+            # Check if column is non-categorical (more than 2 unique values)
+            if df_boolean[column].nunique() > 2:
+                # Booleanize values based on median
+                median = median_values[column]
+                df_boolean[column] = (df_boolean[column] > median).astype(int)
+
+        # Save the boolean version
+        safe_disease_name = disease.replace(" ", "_").replace("/", "_")
+        boolean_output = os.path.join(
+            boolean_folder, f"huimausdata_boolean_{safe_disease_name}.csv"
+        )
+        df_boolean.to_csv(boolean_output, index=False)
+        print(f"Boolean version for {disease} saved to {boolean_output}")
 
     return df
 
