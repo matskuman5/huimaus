@@ -46,6 +46,10 @@ def feature_selection(train, holdout, k, method):
     X_test = holdout.iloc[:, :-1]
     y_test = holdout.iloc[:, -1]
 
+    # Remove constant features
+    X_train = X_train.loc[:, (X_train != X_train.iloc[0]).any()]
+    X_test = X_test[X_train.columns]
+
     selector = SelectKBest(k=k, score_func=method)
     selector.fit(X_train, y_train)
 
