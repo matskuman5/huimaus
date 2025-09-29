@@ -1,11 +1,14 @@
 import pandas as pd
 import argparse
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, chi2
 from sympy import symbols, Eq, Or, And, simplify_logic, Symbol, Not
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def format_formula(formula):
@@ -105,8 +108,6 @@ def predict(train, holdout, median_values):
             prediction = 1
         predictions.append(prediction)
 
-    accuracy = accuracy_score(y_test, predictions)
-
     # Create Sympy symbols for each feature column (excluding the target)
     sym_vars = {col: Symbol(col) for col in train.columns[:-1]}
 
@@ -134,7 +135,7 @@ def predict(train, holdout, median_values):
 
     print("Formula:", format_formula(formula))
 
-    return formula, accuracy
+    return formula, predictions
 
 
 def predict_dataset(train, validation, test, path, args):
@@ -170,11 +171,11 @@ def predict_dataset(train, validation, test, path, args):
             local_train, local_validation = feature_selection(
                 train, validation, i + 1, method
             )
-            formula, accuracy = predict(local_train, local_validation, median_values)
+            formula, predictions = predict(local_train, local_validation, median_values)
+            accuracy = accuracy_score(local_validation.iloc[:, -1], predictions)
             print(f"Accuracy for length {i + 1}: {accuracy}\n")
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
-                best_formula = formula
                 best_method = method
                 best_n_features = i + 1
 
@@ -191,8 +192,26 @@ def predict_dataset(train, validation, test, path, args):
     local_train_validation, local_test = feature_selection(
         train_validation, test, best_n_features, best_method
     )
-    formula, accuracy = predict(local_train_validation, local_test, median_values)
+    formula, predictions = predict(local_train_validation, local_test, median_values)
+    accuracy = accuracy_score(local_test.iloc[:, -1], predictions)
     print(f"Test accuracy: {accuracy}\n")
+
+    # Create and plot confusion matrix
+    cm = confusion_matrix(local_test.iloc[:, -1], predictions)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=np.unique(local_test.iloc[:, -1]),
+        yticklabels=np.unique(local_test.iloc[:, -1]),
+    )
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.show()
 
     # Compare against baseline and random forest
     bot_accuracy = accuracy_score(test.iloc[:, -1], [0] * len(test))
