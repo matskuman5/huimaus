@@ -7,6 +7,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 
+def format_formula(formula):
+    return (
+        formula.replace("&", "AND")
+        .replace("|", "OR")
+        .replace("~", "NOT ")
+        .replace("_[M*]", "")
+    )
+
+
 def load_binary_matrix(path):
     data = pd.read_csv(path + ".csv")
 
@@ -141,13 +150,7 @@ def predict(train, holdout, median_values):
     # print("True positives / false positives:", true_positives, "/", false_positives)
     # print("True negatives / false negatives:", true_negatives, "/", false_negatives)
 
-    print(
-        "Formula:",
-        formula.replace("&", "AND")
-        .replace("|", "OR")
-        .replace("~", "NOT ")
-        .replace("_[M*]", ""),
-    )
+    print("Formula:", format_formula(formula))
 
     return formula, accuracy
 
@@ -178,7 +181,7 @@ def predict_dataset(train, validation, test, path, args):
     # Model selection
 
     # mutual info method disabled for now since it's quite slow
-    for method in [f_classif, chi2]:
+    for method in [mutual_info_classif, f_classif, chi2]:
         print("using method: ", method)
         print("------")
         for i in range(min(args.iteration, amount_of_features)):
@@ -200,7 +203,7 @@ def predict_dataset(train, validation, test, path, args):
     print("Evaluating model on test set")
     print("------")
     print("Using method: ", best_method)
-    print("Best formula: ", best_formula.replace("&", "AND"))
+    print("Best formula: ", format_formula(best_formula))
 
     train_validation = pd.concat([train, validation], ignore_index=True)
 
@@ -220,13 +223,7 @@ def predict_dataset(train, validation, test, path, args):
         "Baseline test accuracy (true/false for every input):",
         max(bot_accuracy, top_accuracy),
     )
-    print(
-        "Best formula: ",
-        best_formula.replace("&", "AND")
-        .replace("|", "OR")
-        .replace("~", "NOT ")
-        .replace("_[M*]", ""),
-    )
+    print("Best formula: ", format_formula(best_formula))
 
     rf = RandomForestClassifier()
     rf.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
