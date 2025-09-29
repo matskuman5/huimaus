@@ -84,12 +84,9 @@ def predict(train, holdout, median_values):
     y_test = holdout.iloc[:, -1].values.tolist()
 
     one_predictors = []
-    # j = 1
     for u_multiset in unique_multisets:
         all_predictions = 0
         one_predictions = 0
-        # print(f"{j}/{len(unique_multisets)}")
-        # j += 1
         for i in range(len(X_train)):
             if u_multiset == X_train[i]:
                 all_predictions += 1
@@ -127,28 +124,12 @@ def predict(train, holdout, median_values):
                 else:
                     conj.append(Not(Symbol(f"{sym_vars[train.columns[i]]}")))
         clauses.append(And(*conj))
+
     if clauses:
         formula = Or(*clauses)
         formula = str(simplify_logic(formula, force=True))
     else:
         formula = "False"
-
-    true_positives = 0
-    true_negatives = 0
-    false_positives = 0
-    false_negatives = 0
-    for i in range(len(y_test)):
-        if y_test[i] == 1 and predictions[i] == 1:
-            true_positives += 1
-        elif y_test[i] == 0 and predictions[i] == 0:
-            true_negatives += 1
-        elif y_test[i] == 1 and predictions[i] == 0:
-            false_negatives += 1
-        elif y_test[i] == 0 and predictions[i] == 1:
-            false_positives += 1
-
-    # print("True positives / false positives:", true_positives, "/", false_positives)
-    # print("True negatives / false negatives:", true_negatives, "/", false_negatives)
 
     print("Formula:", format_formula(formula))
 
@@ -180,7 +161,6 @@ def predict_dataset(train, validation, test, path, args):
 
     # Model selection
 
-    # mutual info method disabled for now since it's quite slow
     for method in [mutual_info_classif, f_classif, chi2]:
         print("using method: ", method)
         print("------")
@@ -203,7 +183,6 @@ def predict_dataset(train, validation, test, path, args):
     print("Evaluating model on test set")
     print("------")
     print("Using method: ", best_method)
-    print("Best formula: ", format_formula(best_formula))
 
     train_validation = pd.concat([train, validation], ignore_index=True)
 
@@ -215,15 +194,12 @@ def predict_dataset(train, validation, test, path, args):
     print(f"Test accuracy: {accuracy}\n")
 
     # Compare against baseline and random forest
-
-    print("\n------\n")
     bot_accuracy = accuracy_score(test.iloc[:, -1], [0] * len(test))
     top_accuracy = accuracy_score(test.iloc[:, -1], [1] * len(test))
     print(
         "Baseline test accuracy (true/false for every input):",
         max(bot_accuracy, top_accuracy),
     )
-    print("Best formula: ", format_formula(best_formula))
 
     rf = RandomForestClassifier()
     rf.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
