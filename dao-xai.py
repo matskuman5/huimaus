@@ -5,6 +5,7 @@ from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classi
 from sympy import symbols, Eq, Or, And, simplify_logic, Symbol, Not
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 
 
 def format_formula(formula):
@@ -202,11 +203,16 @@ def predict_dataset(train, validation, test, path, args):
     )
 
     rf = RandomForestClassifier()
+    bst = XGBClassifier()
     rf.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
+    bst.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
     predictions = rf.predict(test.iloc[:, :-1])
+    bst_predictions = bst.predict(test.iloc[:, :-1])
     rf_accuracy = accuracy_score(test.iloc[:, -1], predictions)
+    bst_accuracy = accuracy_score(test.iloc[:, -1], bst_predictions)
 
     print("Random Forest test accuracy: ", rf_accuracy)
+    print("XGBoost test accuracy: ", bst_accuracy)
 
     return best_accuracy, max(bot_accuracy, top_accuracy), rf_accuracy
 
