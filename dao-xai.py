@@ -11,6 +11,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import KFold
 
+SEED = 33
+
 
 def format_formula(formula):
     return (
@@ -25,9 +27,9 @@ def load_binary_matrix(path):
     data = pd.read_csv(path + ".csv")
 
     # Split data into training and testing sets
-    train, holdout = train_test_split(data, test_size=0.3, random_state=42)
+    train, holdout = train_test_split(data, test_size=0.3, random_state=SEED)
     train_train, train_validation = train_test_split(
-        train, test_size=0.3, random_state=1
+        train, test_size=0.3, random_state=SEED
     )
 
     return train_train, train_validation, holdout
@@ -140,7 +142,7 @@ def predict_dataset(
 
     # Split train data into training and validation sets
     train_train, train_validation = train_test_split(
-        boolean_train, test_size=0.3, random_state=1
+        boolean_train, test_size=0.3, random_state=SEED
     )
 
     print("Predicting feature: ", boolean_train.columns[-1])
@@ -286,7 +288,7 @@ def main():
 
         # 10-CV
         if args.cross_validation:
-            kf = KFold(n_splits=10, shuffle=True, random_state=42)
+            kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
             accuracies = []
             baseline_accuracies = []
             rf_accuracies = []
