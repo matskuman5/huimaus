@@ -288,53 +288,98 @@ def main():
 
         # 10-CV
         if args.cross_validation:
-            kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
-            accuracies = []
-            baseline_accuracies = []
-            rf_accuracies = []
-            bst_accuracies = []
-            fold = 1
-            for train_index, test_index in kf.split(boolean_data):
-                print(f"Fold {fold}")
-                verbose = fold == 1
-                best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
-                    train_index,
-                    test_index,
-                    boolean_data,
-                    numeric_data,
-                    "huimausdata",
-                    args,
-                    verbose=verbose,
-                    results_file=results_file,
-                )
-                accuracies.append(best_acc)
-                baseline_accuracies.append(base_acc)
-                rf_accuracies.append(rf_acc)
-                bst_accuracies.append(bst_acc)
-                fold += 1
+            all_accuracies = []
+            all_baseline_accuracies = []
+            all_rf_accuracies = []
+            all_bst_accuracies = []
+            for iteration in range(1, 11):
+                print("\n\nIteration ", iteration)
+                accuracies = []
+                baseline_accuracies = []
+                rf_accuracies = []
+                bst_accuracies = []
+                for fold in range(1, 11):
+                    print(f"\nFold {fold}")
+                    verbose = fold == 1
 
-            print("\n---10CV---")
-            print(f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}")
+                    # Get indices for train and test sets based on CV column
+                    test_index = numeric_data[
+                        numeric_data[f"CV{iteration}"] == fold
+                    ].index
+                    train_index = numeric_data[
+                        numeric_data[f"CV{iteration}"] != fold
+                    ].index
+
+                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
+                        train_index,
+                        test_index,
+                        boolean_data,
+                        numeric_data,
+                        "huimausdata",
+                        args,
+                        verbose=verbose,
+                        results_file=results_file,
+                    )
+                    accuracies.append(best_acc)
+                    baseline_accuracies.append(base_acc)
+                    rf_accuracies.append(rf_acc)
+                    bst_accuracies.append(bst_acc)
+                    all_accuracies.append(best_acc)
+                    all_baseline_accuracies.append(base_acc)
+                    all_rf_accuracies.append(rf_acc)
+                    all_bst_accuracies.append(bst_acc)
+                    fold += 1
+
+                print("\n---10CV---")
+                print(
+                    f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}"
+                )
+                print(
+                    f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}"
+                )
+                print(
+                    f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}"
+                )
+                print(
+                    f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}"
+                )
+                # results_file.write(
+                #     f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}\n"
+                # )
+                # results_file.write(
+                #     f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}\n"
+                # )
+                # results_file.write(
+                #     f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}\n"
+                # )
+                # results_file.write(
+                #     f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}\n"
+                # )
+            print("-----------\n")
+            print("\n---Overall---")
             print(
-                f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}"
+                f"Average DAOXAI accuracy over 100 folds: {np.mean(all_accuracies):.3f}"
             )
             print(
-                f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}"
+                f"Average baseline accuracy over 100 folds: {np.mean(all_baseline_accuracies):.3f}"
             )
             print(
-                f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}"
+                f"Average Random Forest accuracy over 100 folds: {np.mean(all_rf_accuracies):.3f}"
+            )
+            print(
+                f"Average XGBoost accuracy over 100 folds: {np.mean(all_bst_accuracies):.3f}"
             )
             results_file.write(
-                f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}\n"
+                f"Average DAOXAI accuracy over 100 folds: {np.mean(all_accuracies):.3f}\n"
             )
             results_file.write(
-                f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}\n"
+                f"Average baseline accuracy over 100 folds: {np.mean(all_baseline_accuracies):.3f}\n"
             )
             results_file.write(
-                f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}\n"
+                f"Average Random Forest accuracy over 100 folds: {np.mean(all_rf_accuracies):.3f}\n"
             )
             results_file.write(
-                f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}\n"
+                f"Average XGBoost accuracy over 100 folds: {np.mean(all_bst_accuracies):.3f}\n"
             )
 
 
