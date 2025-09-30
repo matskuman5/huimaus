@@ -59,8 +59,12 @@ def to_csv(mat_file_path, output_csv=None):
 
     print("Median values saved to huimausdata_median_values.txt")
 
-    # Create a folder for boolean datasets
+    # Create folders for disease-specific datasets
+    disease_folder = "datasets"
     boolean_folder = "boolean_datasets"
+    if not os.path.exists(disease_folder):
+        os.makedirs(disease_folder)
+        print(f"Created folder {disease_folder}")
     if not os.path.exists(boolean_folder):
         os.makedirs(boolean_folder)
         print(f"Created folder {boolean_folder}")
@@ -70,10 +74,12 @@ def to_csv(mat_file_path, output_csv=None):
 
     # For each disease, create a binary dataset
     for disease in unique_diseases:
-        df_boolean = df.copy()
+        df_disease = df.copy()
 
         # Create binary FINAL_DIAG column (1 for current disease, 0 for others)
-        df_boolean["FINAL_DIAG"] = (df_boolean["FINAL_DIAG"] == disease).astype(int)
+        df_disease["FINAL_DIAG"] = (df_disease["FINAL_DIAG"] == disease).astype(int)
+
+        df_boolean = df_disease.copy()
 
         # Loop through all columns except FINAL_DIAG
         for column in df_boolean.drop(columns=["FINAL_DIAG"]):
@@ -85,11 +91,12 @@ def to_csv(mat_file_path, output_csv=None):
 
         # Save the boolean version
         safe_disease_name = disease.replace(" ", "_").replace("/", "_")
+        disease_output = os.path.join(disease_folder, f"{safe_disease_name}.csv")
+        df_disease.to_csv(disease_output, index=False)
         boolean_output = os.path.join(
-            boolean_folder, f"huimausdata_boolean_{safe_disease_name}.csv"
+            boolean_folder, f"boolean_{safe_disease_name}.csv"
         )
         df_boolean.to_csv(boolean_output, index=False)
-        print(f"Boolean version for {disease} saved to {boolean_output}")
 
     return df
 

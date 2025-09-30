@@ -119,10 +119,31 @@ def predict(train, holdout, median_values):
 
 
 def predict_dataset(
-    train, validation, test, path, args, verbose=False, results_file=None
+    train_index,
+    test_index,
+    boolean_data,
+    numeric_data,
+    path,
+    args,
+    verbose=False,
+    results_file=None,
 ):
 
-    print("Predicting feature: ", train.columns[-1])
+    boolean_train, boolean_test = (
+        boolean_data.iloc[train_index],
+        boolean_data.iloc[test_index],
+    )
+    numeric_train, numeric_test = (
+        numeric_data.iloc[train_index],
+        numeric_data.iloc[test_index],
+    )
+
+    # Split train data into training and validation sets
+    train_train, train_validation = train_test_split(
+        boolean_train, test_size=0.3, random_state=1
+    )
+
+    print("Predicting feature: ", boolean_train.columns[-1])
 
     median_values = {}
     with open(f"huimausdata_median_values.txt", "r") as f:
@@ -130,7 +151,7 @@ def predict_dataset(
             col, med_val = line.strip().split(":")
             median_values[col.strip() + "_[M*]"] = med_val.strip()
 
-    amount_of_features = len(train.columns) - 1
+    amount_of_features = len(boolean_train.columns) - 1
 
     if args.iteration > amount_of_features:
         print(
@@ -148,9 +169,9 @@ def predict_dataset(
         print("using method: ", method)
         print("------")
         for i in range(min(args.iteration, amount_of_features)):
-            local_train, local_validation = train.copy(), validation.copy()
+            local_train, local_validation = train_train.copy(), train_validation.copy()
             local_train, local_validation = feature_selection(
-                train, validation, i + 1, method
+                local_train, local_validation, i + 1, method
             )
             formula, predictions = predict(local_train, local_validation, median_values)
             accuracy = accuracy_score(local_validation.iloc[:, -1], predictions)
@@ -167,11 +188,9 @@ def predict_dataset(
     print("------")
     print("Using method: ", best_method)
 
-    train_validation = pd.concat([train, validation], ignore_index=True)
-
-    local_train_validation, local_test = train_validation.copy(), test.copy()
+    local_train_validation, local_test = boolean_train.copy(), boolean_test.copy()
     local_train_validation, local_test = feature_selection(
-        train_validation, test, best_n_features, best_method
+        local_train_validation, local_test, best_n_features, best_method
     )
     formula, predictions = predict(local_train_validation, local_test, median_values)
     accuracy = accuracy_score(local_test.iloc[:, -1], predictions)
@@ -199,8 +218,8 @@ def predict_dataset(
     # plt.show()
 
     # Compare against baseline and random forest
-    bot_accuracy = accuracy_score(test.iloc[:, -1], [0] * len(test))
-    top_accuracy = accuracy_score(test.iloc[:, -1], [1] * len(test))
+    bot_accuracy = accuracy_score(boolean_test.iloc[:, -1], [0] * len(boolean_test))
+    top_accuracy = accuracy_score(boolean_test.iloc[:, -1], [1] * len(boolean_test))
     print(
         "Baseline test accuracy (true/false for every input):",
         max(bot_accuracy, top_accuracy),
@@ -208,12 +227,12 @@ def predict_dataset(
 
     rf = RandomForestClassifier()
     bst = XGBClassifier()
-    rf.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
-    bst.fit(train_validation.iloc[:, :-1], train_validation.iloc[:, -1])
-    predictions = rf.predict(test.iloc[:, :-1])
-    bst_predictions = bst.predict(test.iloc[:, :-1])
-    rf_accuracy = accuracy_score(test.iloc[:, -1], predictions)
-    bst_accuracy = accuracy_score(test.iloc[:, -1], bst_predictions)
+    rf.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
+    bst.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
+    predictions = rf.predict(numeric_test.iloc[:, :-1])
+    bst_predictions = bst.predict(numeric_test.iloc[:, :-1])
+    rf_accuracy = accuracy_score(numeric_test.iloc[:, -1], predictions)
+    bst_accuracy = accuracy_score(numeric_test.iloc[:, -1], bst_predictions)
 
     print("Random Forest test accuracy: ", rf_accuracy)
     print("XGBoost test accuracy: ", bst_accuracy)
@@ -258,7 +277,8 @@ def main():
 
     for dataset in datasets:
         print(f"\nProcessing dataset: {dataset}")
-        data = pd.read_csv(dataset + ".csv")
+        boolean_data = pd.read_csv("boolean_datasets/boolean_" + dataset + ".csv")
+        numeric_data = pd.read_csv("datasets/" + dataset + ".csv")
 
         # Open results.txt
         results_file = open("results.txt", "a")
@@ -272,26 +292,19 @@ def main():
             rf_accuracies = []
             bst_accuracies = []
             fold = 1
-            for train_index, test_index in kf.split(data):
+            for train_index, test_index in kf.split(boolean_data):
                 print(f"Fold {fold}")
-                train, test = data.iloc[train_index], data.iloc[test_index]
-                train_train, train_validation = train_test_split(
-                    train, test_size=0.3, random_state=1
+                verbose = fold == 1
+                best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
+                    train_index,
+                    test_index,
+                    boolean_data,
+                    numeric_data,
+                    "huimausdata",
+                    args,
+                    verbose=verbose,
+                    results_file=results_file,
                 )
-                if fold == 1:
-                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
-                        train_train,
-                        train_validation,
-                        test,
-                        "huimausdata",
-                        args,
-                        verbose=True,
-                        results_file=results_file,
-                    )
-                else:
-                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
-                        train_train, train_validation, test, "huimausdata", args
-                    )
                 accuracies.append(best_acc)
                 baseline_accuracies.append(base_acc)
                 rf_accuracies.append(rf_acc)
