@@ -9,6 +9,7 @@ from xgboost import XGBClassifier
 import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.model_selection import KFold
 
 
 def format_formula(formula):
@@ -30,27 +31,6 @@ def load_binary_matrix(path):
     )
 
     return train_train, train_validation, holdout
-
-
-# def load_10_cv_fold(base_path, fold):
-#     train = pd.read_csv(base_path + f"_000_train_split_{fold}.pp", header=None, sep=" ")
-#     validation = pd.read_csv(
-#         base_path + f"_000_val_split_{fold}.pp", header=None, sep=" "
-#     )
-#     test = pd.read_csv(base_path + f"_000_test_split_{fold}.pp", header=None, sep=" ")
-
-#     with open(base_path + "_000_variables.txt", "r") as f:
-#         column_names = f.readline().strip().split()
-#     train.rename(
-#         columns={i: column_names[i] for i in range(len(column_names))}, inplace=True
-#     )
-#     validation.rename(
-#         columns={i: column_names[i] for i in range(len(column_names))}, inplace=True
-#     )
-#     test.rename(
-#         columns={i: column_names[i] for i in range(len(column_names))}, inplace=True
-#     )
-#     return train, validation, test
 
 
 def feature_selection(train, holdout, k, method):
@@ -138,7 +118,9 @@ def predict(train, holdout, median_values):
     return formula, predictions
 
 
-def predict_dataset(train, validation, test, path, args):
+def predict_dataset(
+    train, validation, test, path, args, verbose=False, results_file=None
+):
 
     print("Predicting feature: ", train.columns[-1])
 
@@ -156,7 +138,6 @@ def predict_dataset(train, validation, test, path, args):
         )
         args.iteration = amount_of_features
 
-    best_formula = []
     best_accuracy = 0
     best_method = None
     best_n_features = 0
@@ -195,23 +176,27 @@ def predict_dataset(train, validation, test, path, args):
     formula, predictions = predict(local_train_validation, local_test, median_values)
     accuracy = accuracy_score(local_test.iloc[:, -1], predictions)
     print(f"Test accuracy: {accuracy}\n")
+    if verbose and results_file:
+        results_file.write(
+            f"Example formula: {format_formula(formula)} (accuracy: {accuracy:3f})\n"
+        )
 
     # Create and plot confusion matrix
-    cm = confusion_matrix(local_test.iloc[:, -1], predictions)
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=np.unique(local_test.iloc[:, -1]),
-        yticklabels=np.unique(local_test.iloc[:, -1]),
-    )
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title("Confusion Matrix")
-    plt.tight_layout()
-    plt.show()
+    # cm = confusion_matrix(local_test.iloc[:, -1], predictions)
+    # plt.figure(figsize=(8, 6))
+    # sns.heatmap(
+    #     cm,
+    #     annot=True,
+    #     fmt="d",
+    #     cmap="Blues",
+    #     xticklabels=np.unique(local_test.iloc[:, -1]),
+    #     yticklabels=np.unique(local_test.iloc[:, -1]),
+    # )
+    # plt.xlabel("Predicted")
+    # plt.ylabel("True")
+    # plt.title("Confusion Matrix")
+    # plt.tight_layout()
+    # plt.show()
 
     # Compare against baseline and random forest
     bot_accuracy = accuracy_score(test.iloc[:, -1], [0] * len(test))
@@ -233,7 +218,7 @@ def predict_dataset(train, validation, test, path, args):
     print("Random Forest test accuracy: ", rf_accuracy)
     print("XGBoost test accuracy: ", bst_accuracy)
 
-    return best_accuracy, max(bot_accuracy, top_accuracy), rf_accuracy
+    return best_accuracy, max(bot_accuracy, top_accuracy), rf_accuracy, bst_accuracy
 
 
 def main():
@@ -244,7 +229,7 @@ def main():
         "--path",
         type=str,
         action="store",
-        help="Base path for the data folder.",
+        help="Path to dataset OR a .txt file with a list of datasets.",
         required=True,
     )
     parser.add_argument(
@@ -264,8 +249,78 @@ def main():
     )
     args = parser.parse_args()
 
-    train_train, train_validation, holdout = load_binary_matrix(args.path)
-    predict_dataset(train_train, train_validation, holdout, "huimausdata", args)
+    # Load data
+    if args.path.endswith(".txt"):
+        with open(args.path, "r") as f:
+            datasets = [line.strip() for line in f if line.strip()]
+    else:
+        datasets = [args.path]
+
+    for dataset in datasets:
+        print(f"\nProcessing dataset: {dataset}")
+        data = pd.read_csv(dataset + ".csv")
+
+        # Open results.txt
+        results_file = open("results.txt", "a")
+        results_file.write(f"\nResults for dataset: {dataset}\n")
+
+        # 10-CV
+        if args.cross_validation:
+            kf = KFold(n_splits=10, shuffle=True, random_state=42)
+            accuracies = []
+            baseline_accuracies = []
+            rf_accuracies = []
+            bst_accuracies = []
+            fold = 1
+            for train_index, test_index in kf.split(data):
+                print(f"Fold {fold}")
+                train, test = data.iloc[train_index], data.iloc[test_index]
+                train_train, train_validation = train_test_split(
+                    train, test_size=0.3, random_state=1
+                )
+                if fold == 1:
+                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
+                        train_train,
+                        train_validation,
+                        test,
+                        "huimausdata",
+                        args,
+                        verbose=True,
+                        results_file=results_file,
+                    )
+                else:
+                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
+                        train_train, train_validation, test, "huimausdata", args
+                    )
+                accuracies.append(best_acc)
+                baseline_accuracies.append(base_acc)
+                rf_accuracies.append(rf_acc)
+                bst_accuracies.append(bst_acc)
+                fold += 1
+
+            print("\n---10CV---")
+            print(f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}")
+            print(
+                f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}"
+            )
+            print(
+                f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}"
+            )
+            print(
+                f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}"
+            )
+            results_file.write(
+                f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}\n"
+            )
+            results_file.write(
+                f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}\n"
+            )
+            results_file.write(
+                f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}\n"
+            )
+            results_file.write(
+                f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}\n"
+            )
 
 
 if __name__ == "__main__":
