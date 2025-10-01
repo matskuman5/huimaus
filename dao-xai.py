@@ -1,6 +1,6 @@
 import pandas as pd
 import argparse
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, f1_score, recall_score, confusion_matrix
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, chi2
 from sympy import symbols, Eq, Or, And, simplify_logic, Symbol, Not
 from sklearn.ensemble import RandomForestClassifier
@@ -9,7 +9,6 @@ from xgboost import XGBClassifier
 import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, f1_score, recall_score, confusion_matrix
 
 SEED = 33
 
@@ -21,18 +20,6 @@ def format_formula(formula):
         .replace("~", "NOT ")
         .replace("_[M*]", "")
     )
-
-
-def load_binary_matrix(path):
-    data = pd.read_csv(path + ".csv")
-
-    # Split data into training and testing sets
-    train, holdout = train_test_split(data, test_size=0.3, random_state=SEED)
-    train_train, train_validation = train_test_split(
-        train, test_size=0.3, random_state=SEED
-    )
-
-    return train_train, train_validation, holdout
 
 
 def feature_selection(train, holdout, k, method):
