@@ -9,7 +9,7 @@ from xgboost import XGBClassifier
 import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import KFold
+from sklearn.metrics import accuracy_score, f1_score, recall_score, confusion_matrix
 
 SEED = 33
 
@@ -177,7 +177,7 @@ def predict_dataset(
             )
             formula, predictions = predict(local_train, local_validation, median_values)
             accuracy = accuracy_score(local_validation.iloc[:, -1], predictions)
-            print(f"Accuracy for length {i + 1}: {accuracy}\n")
+            print(f"Accuracy for length {i + 1}: {accuracy:3f}\n")
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
                 best_method = method
@@ -196,10 +196,16 @@ def predict_dataset(
     )
     formula, predictions = predict(local_train_validation, local_test, median_values)
     accuracy = accuracy_score(local_test.iloc[:, -1], predictions)
-    print(f"Test accuracy: {accuracy}\n")
+    f1 = f1_score(local_test.iloc[:, -1], predictions, zero_division=0)
+    sensitivity = recall_score(local_test.iloc[:, -1], predictions, zero_division=0)
+
+    print(f"Test accuracy: {accuracy:.3f}")
+    print(f"Test F1-score: {f1:.3f}")
+    print(f"Test sensitivity: {sensitivity:.3f}\n")
+
     if verbose and results_file:
         results_file.write(
-            f"Example formula: {format_formula(formula)} (accuracy: {accuracy:3f})\n"
+            f"Example formula: {format_formula(formula)} (accuracy: {accuracy:.3f}, F1: {f1:.3f}, sensitivity: {sensitivity:.3f})\n"
         )
 
     # Create and plot confusion matrix
@@ -222,24 +228,56 @@ def predict_dataset(
     # Compare against baseline and random forest
     bot_accuracy = accuracy_score(boolean_test.iloc[:, -1], [0] * len(boolean_test))
     top_accuracy = accuracy_score(boolean_test.iloc[:, -1], [1] * len(boolean_test))
+    baseline_predictions = [1 if top_accuracy > bot_accuracy else 0] * len(boolean_test)
+    baseline_acc = max(bot_accuracy, top_accuracy)
+    baseline_f1 = f1_score(
+        boolean_test.iloc[:, -1], baseline_predictions, zero_division=0
+    )
+    baseline_sens = recall_score(
+        boolean_test.iloc[:, -1], baseline_predictions, zero_division=0
+    )
+
     print(
-        "Baseline test accuracy (true/false for every input):",
-        max(bot_accuracy, top_accuracy),
+        f"Baseline test metrics - accuracy: {baseline_acc:.3f}, F1: {baseline_f1:.3f}, sensitivity: {baseline_sens:.3f}"
     )
 
     rf = RandomForestClassifier()
     bst = XGBClassifier()
     rf.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
     bst.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
-    predictions = rf.predict(numeric_test.iloc[:, :-1])
+
+    rf_predictions = rf.predict(numeric_test.iloc[:, :-1])
     bst_predictions = bst.predict(numeric_test.iloc[:, :-1])
-    rf_accuracy = accuracy_score(numeric_test.iloc[:, -1], predictions)
+
+    rf_accuracy = accuracy_score(numeric_test.iloc[:, -1], rf_predictions)
+    rf_f1 = f1_score(numeric_test.iloc[:, -1], rf_predictions, zero_division=0)
+    rf_sens = recall_score(numeric_test.iloc[:, -1], rf_predictions, zero_division=0)
+
     bst_accuracy = accuracy_score(numeric_test.iloc[:, -1], bst_predictions)
+    bst_f1 = f1_score(numeric_test.iloc[:, -1], bst_predictions, zero_division=0)
+    bst_sens = recall_score(numeric_test.iloc[:, -1], bst_predictions, zero_division=0)
 
-    print("Random Forest test accuracy: ", rf_accuracy)
-    print("XGBoost test accuracy: ", bst_accuracy)
+    print(
+        f"Random Forest test metrics - accuracy: {rf_accuracy:.3f}, F1: {rf_f1:.3f}, sensitivity: {rf_sens:.3f}"
+    )
+    print(
+        f"XGBoost test metrics - accuracy: {bst_accuracy:.3f}, F1: {bst_f1:.3f}, sensitivity: {bst_sens:.3f}"
+    )
 
-    return best_accuracy, max(bot_accuracy, top_accuracy), rf_accuracy, bst_accuracy
+    return (
+        accuracy,
+        f1,
+        sensitivity,
+        baseline_acc,
+        baseline_f1,
+        baseline_sens,
+        rf_accuracy,
+        rf_f1,
+        rf_sens,
+        bst_accuracy,
+        bst_f1,
+        bst_sens,
+    )
 
 
 def main():
@@ -289,15 +327,31 @@ def main():
         # 10-CV
         if args.cross_validation:
             all_accuracies = []
+            all_f1_scores = []
+            all_sensitivities = []
             all_baseline_accuracies = []
+            all_baseline_f1_scores = []
+            all_baseline_sensitivities = []
             all_rf_accuracies = []
+            all_rf_f1_scores = []
+            all_rf_sensitivities = []
             all_bst_accuracies = []
+            all_bst_f1_scores = []
+            all_bst_sensitivities = []
             for iteration in range(1, 11):
                 print("\n\nIteration ", iteration)
                 accuracies = []
+                f1_scores = []
+                sensitivities = []
                 baseline_accuracies = []
+                baseline_f1_scores = []
+                baseline_sensitivities = []
                 rf_accuracies = []
+                rf_f1_scores = []
+                rf_sensitivities = []
                 bst_accuracies = []
+                bst_f1_scores = []
+                bst_sensitivities = []
                 for fold in range(1, 11):
                     print(f"\nFold {fold}")
                     verbose = fold == 1
@@ -310,7 +364,20 @@ def main():
                         numeric_data[f"CV{iteration}"] != fold
                     ].index
 
-                    best_acc, base_acc, rf_acc, bst_acc = predict_dataset(
+                    (
+                        accuracy,
+                        f1,
+                        sensitivity,
+                        baseline_acc,
+                        baseline_f1,
+                        baseline_sens,
+                        rf_accuracy,
+                        rf_f1,
+                        rf_sens,
+                        bst_accuracy,
+                        bst_f1,
+                        bst_sens,
+                    ) = predict_dataset(
                         train_index,
                         test_index,
                         boolean_data,
@@ -320,28 +387,44 @@ def main():
                         verbose=verbose,
                         results_file=results_file,
                     )
-                    accuracies.append(best_acc)
-                    baseline_accuracies.append(base_acc)
-                    rf_accuracies.append(rf_acc)
-                    bst_accuracies.append(bst_acc)
-                    all_accuracies.append(best_acc)
-                    all_baseline_accuracies.append(base_acc)
-                    all_rf_accuracies.append(rf_acc)
-                    all_bst_accuracies.append(bst_acc)
+                    accuracies.append(accuracy)
+                    f1_scores.append(f1)
+                    sensitivities.append(sensitivity)
+                    baseline_f1_scores.append(baseline_f1)
+                    baseline_sensitivities.append(baseline_sens)
+                    rf_f1_scores.append(rf_f1)
+                    rf_sensitivities.append(rf_sens)
+                    bst_f1_scores.append(bst_f1)
+                    bst_sensitivities.append(bst_sens)
+                    baseline_accuracies.append(baseline_acc)
+                    rf_accuracies.append(rf_accuracy)
+                    bst_accuracies.append(bst_accuracy)
+                    all_accuracies.append(accuracy)
+                    all_baseline_accuracies.append(baseline_acc)
+                    all_rf_accuracies.append(rf_accuracy)
+                    all_bst_accuracies.append(bst_accuracy)
+                    all_f1_scores.append(f1)
+                    all_baseline_f1_scores.append(baseline_f1)
+                    all_rf_f1_scores.append(rf_f1)
+                    all_bst_f1_scores.append(bst_f1)
+                    all_sensitivities.append(sensitivity)
+                    all_baseline_sensitivities.append(baseline_sens)
+                    all_rf_sensitivities.append(rf_sens)
+                    all_bst_sensitivities.append(bst_sens)
                     fold += 1
 
                 print("\n---10CV---")
                 print(
-                    f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}"
+                    f"DAOXAI: {np.mean(accuracies):.3f} (F1: {np.mean(f1_scores):.3f}, sens: {np.mean(sensitivities):.3f})"
                 )
                 print(
-                    f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f}"
+                    f"Average baseline accuracy over 10 folds: {np.mean(baseline_accuracies):.3f} (F1: {np.mean(baseline_f1_scores):.3f}, sens: {np.mean(baseline_sensitivities):.3f})"
                 )
                 print(
-                    f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f}"
+                    f"Average Random Forest accuracy over 10 folds: {np.mean(rf_accuracies):.3f} (F1: {np.mean(rf_f1_scores):.3f}, sens: {np.mean(rf_sensitivities):.3f})"
                 )
                 print(
-                    f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f}"
+                    f"Average XGBoost accuracy over 10 folds: {np.mean(bst_accuracies):.3f} (F1: {np.mean(bst_f1_scores):.3f}, sens: {np.mean(bst_sensitivities):.3f})"
                 )
                 # results_file.write(
                 #     f"Average DAOXAI accuracy over 10 folds: {np.mean(accuracies):.3f}\n"
@@ -358,28 +441,28 @@ def main():
             print("-----------\n")
             print("\n---Overall---")
             print(
-                f"Average DAOXAI accuracy over 100 folds: {np.mean(all_accuracies):.3f}"
+                f"DAOXAI 100 folds: {np.mean(all_accuracies):.3f} (F1: {np.mean(all_f1_scores):.3f}, sens: {np.mean(all_sensitivities):.3f})"
             )
             print(
-                f"Average baseline accuracy over 100 folds: {np.mean(all_baseline_accuracies):.3f}"
+                f"Baseline 100 folds: {np.mean(all_baseline_accuracies):.3f} (F1: {np.mean(all_baseline_f1_scores):.3f}, sens: {np.mean(all_baseline_sensitivities):.3f})"
             )
             print(
-                f"Average Random Forest accuracy over 100 folds: {np.mean(all_rf_accuracies):.3f}"
+                f"RF 100 folds: {np.mean(all_rf_accuracies):.3f} (F1: {np.mean(all_rf_f1_scores):.3f}, sens: {np.mean(all_rf_sensitivities):.3f})"
             )
             print(
-                f"Average XGBoost accuracy over 100 folds: {np.mean(all_bst_accuracies):.3f}"
+                f"XGBoost 100 folds: {np.mean(all_bst_accuracies):.3f} (F1: {np.mean(all_bst_f1_scores):.3f}, sens: {np.mean(all_bst_sensitivities):.3f})"
             )
             results_file.write(
-                f"Average DAOXAI accuracy over 100 folds: {np.mean(all_accuracies):.3f}\n"
+                f"DAOXAI 100 folds:\\t{np.mean(all_accuracies):.3f} (F1: {np.mean(all_f1_scores):.3f}, sens: {np.mean(all_sensitivities):.3f})\n"
             )
             results_file.write(
-                f"Average baseline accuracy over 100 folds: {np.mean(all_baseline_accuracies):.3f}\n"
+                f"Baseline 100 folds:\\t{np.mean(all_baseline_accuracies):.3f} (F1: {np.mean(all_baseline_f1_scores):.3f}, sens: {np.mean(all_baseline_sensitivities):.3f})\n"
             )
             results_file.write(
-                f"Average Random Forest accuracy over 100 folds: {np.mean(all_rf_accuracies):.3f}\n"
+                f"RF 100 folds:\\t{np.mean(all_rf_accuracies):.3f} (F1: {np.mean(all_rf_f1_scores):.3f}, sens: {np.mean(all_rf_sensitivities):.3f})\n"
             )
             results_file.write(
-                f"Average XGBoost accuracy over 100 folds: {np.mean(all_bst_accuracies):.3f}\n"
+                f"XGBoost 100 folds:\\t{np.mean(all_bst_accuracies):.3f} (F1: {np.mean(all_bst_f1_scores):.3f}, sens: {np.mean(all_bst_sensitivities):.3f})\n"
             )
 
 
