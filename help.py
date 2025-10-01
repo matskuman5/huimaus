@@ -32,8 +32,13 @@ def to_csv(mat_file_path, output_csv=None):
     final_diag = df.pop("FINAL_DIAG")
     df["FINAL_DIAG"] = final_diag
 
-    # drop ID column
-    df = df.drop(columns=["ID"])
+    # drop some unnecessary columns
+    df = df.drop(
+        columns=[
+            "ID",
+            "VERSION",
+        ]
+    )
 
     # Print summary
     print(f"Loaded data with {df.shape[0]} rows and {df.shape[1]} columns")
