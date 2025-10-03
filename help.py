@@ -93,6 +93,8 @@ def to_csv(mat_file_path, output_csv=None):
                 # Booleanize values based on median
                 median = median_values[column]
                 df_boolean[column] = (df_boolean[column] > median).astype(int)
+                # Rename column to indicate boolean
+                df_boolean.rename(columns={column: f"{column}_[M*]"}, inplace=True)
 
         # Save the boolean version
         safe_disease_name = disease.replace(" ", "_").replace("/", "_")

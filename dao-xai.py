@@ -47,14 +47,10 @@ def feature_selection(train, holdout, k, method):
     return train, holdout
 
 
-def predict(train, holdout, median_values):
-
+def get_optimal_classifier_formula(train, median_values):
     unique_multisets = train.iloc[:, :-1].drop_duplicates().values.tolist()
     X_train = train.iloc[:, :-1].values.tolist()
     y_train = train.iloc[:, -1].values.tolist()
-
-    X_test = holdout.iloc[:, :-1].values.tolist()
-    y_test = holdout.iloc[:, -1].values.tolist()
 
     one_predictors = []
     for u_multiset in unique_multisets:
@@ -69,13 +65,6 @@ def predict(train, holdout, median_values):
                 continue
         if all_predictions != 0 and one_predictions / all_predictions > 0.5:
             one_predictors.append(u_multiset)
-
-    predictions = []
-    for i in range(len(y_test)):
-        prediction = 0
-        if X_test[i] in one_predictors:
-            prediction = 1
-        predictions.append(prediction)
 
     # Create Sympy symbols for each feature column (excluding the target)
     sym_vars = {col: Symbol(col) for col in train.columns[:-1]}
@@ -102,6 +91,39 @@ def predict(train, holdout, median_values):
     else:
         formula = "False"
 
+    # Also return a version that is more easily processed
+    classifier = {}
+    for predictor in one_predictors:
+        for i, val in enumerate(predictor):
+            classifier[train.columns[i]] = {"value": val, "type": "boolean"}
+
+    return formula, classifier
+
+
+def predict_with_classifier_formula(classifier, test):
+    X_test = test.iloc[:, :-1].values.tolist()
+    y_test = test.iloc[:, -1].values.tolist()
+
+    predictions = []
+    for i in range(len(y_test)):
+        if classifier == {}:
+            predictions.append(0)
+            continue
+
+        prediction = 1
+        for feature, condition in classifier.items():
+            col_index = test.columns.get_loc(feature)
+            if X_test[i][col_index] != condition["value"]:
+                prediction = 0
+                break
+        predictions.append(prediction)
+
+    return predictions
+
+
+def predict(train, holdout, median_values):
+    formula, classifier = get_optimal_classifier_formula(train, median_values)
+    predictions = predict_with_classifier_formula(classifier, holdout)
     print("Formula:", format_formula(formula))
 
     return formula, predictions
