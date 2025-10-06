@@ -331,13 +331,6 @@ def main():
         help="Maximum features to select.",
         default=5,
     )
-    parser.add_argument(
-        "-cv",
-        "--cross-validation",
-        action="store_true",
-        help="Use 10-fold cross-validation.",
-        default=False,
-    )
     args = parser.parse_args()
 
     # Load data
@@ -365,105 +358,103 @@ def main():
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     results_file.write(f"\n{current_time}\n)")
 
-    # 10-CV
-    if args.cross_validation:
-        # Store metrics across all iterations and folds
-        all_metrics = {
+    # Store metrics across all iterations and folds
+    all_metrics = {
+        "dao-xai": {"accuracy": [], "f1": [], "sensitivity": []},
+        "baseline": {"accuracy": [], "f1": [], "sensitivity": []},
+        "rf": {"accuracy": [], "f1": [], "sensitivity": []},
+        "xgboost": {"accuracy": [], "f1": [], "sensitivity": []},
+    }
+
+    for iteration in range(1, 2):
+        print("\n\nIteration ", iteration)
+        # Store metrics for current iteration
+        iter_metrics = {
             "dao-xai": {"accuracy": [], "f1": [], "sensitivity": []},
             "baseline": {"accuracy": [], "f1": [], "sensitivity": []},
             "rf": {"accuracy": [], "f1": [], "sensitivity": []},
             "xgboost": {"accuracy": [], "f1": [], "sensitivity": []},
         }
 
-        for iteration in range(1, 2):
-            print("\n\nIteration ", iteration)
-            # Store metrics for current iteration
-            iter_metrics = {
-                "dao-xai": {"accuracy": [], "f1": [], "sensitivity": []},
-                "baseline": {"accuracy": [], "f1": [], "sensitivity": []},
-                "rf": {"accuracy": [], "f1": [], "sensitivity": []},
-                "xgboost": {"accuracy": [], "f1": [], "sensitivity": []},
-            }
+        for fold in range(1, 11):
+            print(f"\nFold {fold}")
+            verbose = fold == 1
 
-            for fold in range(1, 11):
-                print(f"\nFold {fold}")
-                verbose = fold == 1
+            # Get indices for train and test sets based on CV column
+            test_index = full_numeric_data[
+                full_numeric_data[f"CV{iteration}"] == fold
+            ].index
+            train_index = full_numeric_data[
+                full_numeric_data[f"CV{iteration}"] != fold
+            ].index
 
-                # Get indices for train and test sets based on CV column
-                test_index = full_numeric_data[
-                    full_numeric_data[f"CV{iteration}"] == fold
-                ].index
-                train_index = full_numeric_data[
-                    full_numeric_data[f"CV{iteration}"] != fold
-                ].index
+            results = {}
 
-                results = {}
-
-                classifiers = {}
-                for disease in datasets:
-                    print(disease)
-                    boolean_data = pd.read_csv(
-                        "boolean_datasets/boolean_" + disease + ".csv"
-                    )
-                    formula, classifier, predictions = dao_xai(
-                        boolean_data.iloc[train_index],
-                        boolean_data.iloc[test_index],
-                        median_values,
-                        args.iteration,
-                    )
-
-                    classifiers[disease] = classifier
-
-                # Predict using dao-xai multiclass
-                predictions = dao_xai_multiclass(
-                    full_boolean_data.iloc[test_index], classifiers
+            classifiers = {}
+            for disease in datasets:
+                print(disease)
+                boolean_data = pd.read_csv(
+                    "boolean_datasets/boolean_" + disease + ".csv"
                 )
-                results["dao-xai"] = classification_metrics(
-                    full_numeric_data.iloc[test_index].iloc[:, -1], predictions
+                formula, classifier, predictions = dao_xai(
+                    boolean_data.iloc[train_index],
+                    boolean_data.iloc[test_index],
+                    median_values,
+                    args.iteration,
                 )
 
-                other_results = other_classifiers(
-                    full_numeric_data.iloc[train_index],
-                    full_numeric_data.iloc[test_index],
-                )
-                results.update(other_results)
+                classifiers[disease] = classifier
 
-                # Store metrics for each method
-                for method in ["dao-xai", "baseline", "rf", "xgboost"]:
-                    accuracy, f1, sensitivity = results[method]
-                    iter_metrics[method]["accuracy"].append(accuracy)
-                    iter_metrics[method]["f1"].append(f1)
-                    iter_metrics[method]["sensitivity"].append(sensitivity)
-                    all_metrics[method]["accuracy"].append(accuracy)
-                    all_metrics[method]["f1"].append(f1)
-                    all_metrics[method]["sensitivity"].append(sensitivity)
-
-            print("\n---10CV---")
-            for method in ["dao-xai", "baseline", "rf", "xgboost"]:
-                method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
-                print(
-                    f"{method_name}: {np.mean(iter_metrics[method]['accuracy']):.3f} "
-                    + f"(F1: {np.mean(iter_metrics[method]['f1']):.3f}, "
-                    + f"sens: {np.mean(iter_metrics[method]['sensitivity']):.3f})"
-                )
-
-        print("-----------\n")
-        print("\n---Overall---")
-
-        # Print and write overall results
-        for method in ["dao-xai", "baseline", "rf", "xgboost"]:
-            method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
-            avg_acc = np.mean(all_metrics[method]["accuracy"])
-            avg_f1 = np.mean(all_metrics[method]["f1"])
-            avg_sens = np.mean(all_metrics[method]["sensitivity"])
-
-            result_line = (
-                f"{method_name} 100 folds:\t\t{avg_acc:.3f} "
-                + f"(F1: {avg_f1:.3f}, sens: {avg_sens:.3f})"
+            # Predict using dao-xai multiclass
+            predictions = dao_xai_multiclass(
+                full_boolean_data.iloc[test_index], classifiers
+            )
+            results["dao-xai"] = classification_metrics(
+                full_numeric_data.iloc[test_index].iloc[:, -1], predictions
             )
 
-            print(result_line)
-            results_file.write(result_line + "\n")
+            other_results = other_classifiers(
+                full_numeric_data.iloc[train_index],
+                full_numeric_data.iloc[test_index],
+            )
+            results.update(other_results)
+
+            # Store metrics for each method
+            for method in ["dao-xai", "baseline", "rf", "xgboost"]:
+                accuracy, f1, sensitivity = results[method]
+                iter_metrics[method]["accuracy"].append(accuracy)
+                iter_metrics[method]["f1"].append(f1)
+                iter_metrics[method]["sensitivity"].append(sensitivity)
+                all_metrics[method]["accuracy"].append(accuracy)
+                all_metrics[method]["f1"].append(f1)
+                all_metrics[method]["sensitivity"].append(sensitivity)
+
+        print("\n---10CV---")
+        for method in ["dao-xai", "baseline", "rf", "xgboost"]:
+            method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
+            print(
+                f"{method_name}: {np.mean(iter_metrics[method]['accuracy']):.3f} "
+                + f"(F1: {np.mean(iter_metrics[method]['f1']):.3f}, "
+                + f"sens: {np.mean(iter_metrics[method]['sensitivity']):.3f})"
+            )
+
+    print("-----------\n")
+    print("\n---Overall---")
+
+    # Print and write overall results
+    for method in ["dao-xai", "baseline", "rf", "xgboost"]:
+        method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
+        avg_acc = np.mean(all_metrics[method]["accuracy"])
+        avg_f1 = np.mean(all_metrics[method]["f1"])
+        avg_sens = np.mean(all_metrics[method]["sensitivity"])
+
+        result_line = (
+            f"{method_name} 100 folds:\t\t{avg_acc:.3f} "
+            + f"(F1: {avg_f1:.3f}, sens: {avg_sens:.3f})"
+        )
+
+        print(result_line)
+        results_file.write(result_line + "\n")
 
 
 if __name__ == "__main__":
