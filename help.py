@@ -25,7 +25,11 @@ def to_csv(mat_file_path, output_csv=None):
 
     # replace the FINAL_DIAG column with the actual disease names
     df["FINAL_DIAG"] = df["FINAL_DIAG"].apply(
-        lambda x: diseases[int(x - 1)] if 0 < x <= len(diseases) else "Unknown"
+        lambda x: (
+            diseases[int(x - 1)].replace(" ", "_")
+            if 0 < x <= len(diseases)
+            else "Unknown"
+        )
     )
 
     # move final_diag to the end
@@ -104,6 +108,18 @@ def to_csv(mat_file_path, output_csv=None):
             boolean_folder, f"boolean_{safe_disease_name}.csv"
         )
         df_boolean.to_csv(boolean_output, index=False)
+
+    # Loop through all columns except FINAL_DIAG
+    for column in df.drop(columns=["FINAL_DIAG"]):
+        # Check if column is non-categorical (more than 2 unique values)
+        if df[column].nunique() > 2:
+            # Booleanize values based on median
+            median = median_values[column]
+            df[column] = (df[column] > median).astype(int)
+            df.rename(columns={column: f"{column}_[M*]"}, inplace=True)
+
+    # Save the boolean version
+    df.to_csv("huimausdata_boolean.csv", index=False)
 
     return df
 
