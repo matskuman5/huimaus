@@ -50,6 +50,9 @@ def feature_selection(train, holdout, k, method):
     return train, holdout
 
 
+# The core DAO-XAI algorithm
+# Gets the optimal classifier formula for the given training set
+# Returns both a string representation of the formula as well as the classifier as a dict
 def get_optimal_classifier_formula(train, median_values):
     unique_multisets = train.iloc[:, :-1].drop_duplicates().values.tolist()
     X_train = train.iloc[:, :-1].values.tolist()
@@ -103,6 +106,7 @@ def get_optimal_classifier_formula(train, median_values):
     return formula, classifier
 
 
+# Returns predictions for the given test set with the given DAO-XAI classifier dict
 def predict_with_classifier_formula(classifier, test):
     X_test = test.iloc[:, :-1].values.tolist()
     y_test = test.iloc[:, -1].values.tolist()
@@ -124,6 +128,9 @@ def predict_with_classifier_formula(classifier, test):
     return predictions
 
 
+# The whole DAO-XAI pipeline
+# Performs model selection (feature selection method) and evaluation
+# Returns the model formula, classifier dict and predictions for the test set
 def dao_xai(boolean_train, boolean_test, median_values, iterations):
     # Split train data into training and validation sets
     train_train, train_validation = train_test_split(
@@ -184,6 +191,9 @@ def dao_xai(boolean_train, boolean_test, median_values, iterations):
     return formula, classifier, predictions
 
 
+# Runs DAO-XAI multiclass classification with the given dict of classifiers
+# Each classifier corresponds to one y-label
+# Returns the final predictions for the test set
 def dao_xai_multiclass(boolean_test, classifiers):
     classifier_predictions = {}
     for disease in classifiers.keys():
@@ -191,6 +201,8 @@ def dao_xai_multiclass(boolean_test, classifiers):
             classifiers[disease], boolean_test
         )
 
+    # For now, we break ties (where multiple classifiers predict positive) by just arbitrarily taking the first positive prediction
+    # If the row satisfies none of the classifier rules, we predict "none"
     final_predictions = []
     for i in range(len(boolean_test.iloc[:, -1])):
         predicted = 0
@@ -212,6 +224,8 @@ def classification_metrics(y_true, y_pred):
     return accuracy, f1, sensitivity
 
 
+# Run DAO-XAI binary classification on the given dataset
+# Returns classification metrics
 def predict_dataset(
     train_index,
     test_index,
@@ -267,6 +281,10 @@ def predict_dataset(
     return results
 
 
+# Return classification metrics for the following classifiers:
+# 1. Dummy classifier that always predicts the most frequent class
+# 2. Random Forest
+# 3. XGBoost
 def other_classifiers(numeric_train, numeric_test):
 
     results = {}
