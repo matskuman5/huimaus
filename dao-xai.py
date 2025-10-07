@@ -131,7 +131,7 @@ def predict_with_classifier_formula(classifier, test):
 # The whole DAO-XAI pipeline
 # Performs model selection (feature selection method) and evaluation
 # Returns the model formula, classifier dict and predictions for the test set
-def dao_xai(boolean_train, boolean_test, median_values, iterations):
+def dao_xai(boolean_train, boolean_test, median_values, max_features):
     # Split train data into training and validation sets
     train_train, train_validation = train_test_split(
         boolean_train, test_size=0.3, random_state=SEED
@@ -141,11 +141,11 @@ def dao_xai(boolean_train, boolean_test, median_values, iterations):
 
     amount_of_features = len(boolean_train.columns) - 1
 
-    if iterations > amount_of_features:
+    if max_features > amount_of_features:
         print(
-            f"Note: dataset has {amount_of_features} features, which is smaller than the desired maximum amount {iterations}."
+            f"Note: dataset has {amount_of_features} features, which is smaller than the desired maximum amount {max_features}."
         )
-        iterations = amount_of_features
+        max_features = amount_of_features
 
     best_accuracy = 0
     best_method = None
@@ -156,7 +156,7 @@ def dao_xai(boolean_train, boolean_test, median_values, iterations):
     for method in [f_classif, chi2]:
         print("using method: ", method)
         print("------")
-        for i in range(min(iterations, amount_of_features)):
+        for i in range(min(max_features, amount_of_features)):
             local_train, local_validation = train_train.copy(), train_validation.copy()
             local_train, local_validation = feature_selection(
                 local_train, local_validation, i + 1, method
@@ -263,7 +263,7 @@ def predict_dataset(
     )
 
     formula, classifier, predictions = dao_xai(
-        boolean_train, boolean_test, median_values, args.iteration
+        boolean_train, boolean_test, median_values, args.max_features
     )
 
     accuracy, f1, sensitivity = classification_metrics(
@@ -344,8 +344,8 @@ def main():
         required=True,
     )
     parser.add_argument(
-        "-i",
-        "--iteration",
+        "-f",
+        "--max-features",
         type=int,
         action="store",
         help="Maximum features to select.",
@@ -388,7 +388,7 @@ def main():
     now = datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     results_file.write(
-        f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.iteration}\n"
+        f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.max_features}\n"
     )
 
     # Store metrics across all iterations and folds
@@ -446,7 +446,7 @@ def main():
                                 boolean_data.iloc[train_index],
                                 boolean_data.iloc[test_index],
                                 median_values,
-                                args.iteration,
+                                args.max_features,
                             )
                             classifiers[disease] = classifier
                 # For binary classification, just report the results for the given disease
