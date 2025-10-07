@@ -216,6 +216,25 @@ def dao_xai_multiclass(boolean_test, classifiers):
 
     return final_predictions
 
+    # Create and plot confusion matrix
+    cm = confusion_matrix(boolean_test.iloc[:, -1], final_predictions)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=np.unique(boolean_test.iloc[:, -1]),
+        yticklabels=np.unique(boolean_test.iloc[:, -1]),
+    )
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.show()
+
+    return final_predictions
+
 
 def classification_metrics(y_true, y_pred):
     accuracy = accuracy_score(y_true, y_pred)
@@ -260,23 +279,6 @@ def predict_dataset(
         results_file.write(
             f"Example formula: {format_formula(formula)} (accuracy: {accuracy:.3f}, F1: {f1:.3f}, sensitivity: {sensitivity:.3f})\n"
         )
-
-    # Create and plot confusion matrix
-    # cm = confusion_matrix(local_test.iloc[:, -1], predictions)
-    # plt.figure(figsize=(8, 6))
-    # sns.heatmap(
-    #     cm,
-    #     annot=True,
-    #     fmt="d",
-    #     cmap="Blues",
-    #     xticklabels=np.unique(local_test.iloc[:, -1]),
-    #     yticklabels=np.unique(local_test.iloc[:, -1]),
-    # )
-    # plt.xlabel("Predicted")
-    # plt.ylabel("True")
-    # plt.title("Confusion Matrix")
-    # plt.tight_layout()
-    # plt.show()
 
     return results
 
