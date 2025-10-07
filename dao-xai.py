@@ -352,6 +352,15 @@ def main():
         default=5,
     )
     parser.add_argument(
+        "-i",
+        "--iterations",
+        type=int,
+        action="store",
+        help="Number of iterations of 10-CV to run (1-10, default 1).",
+        default=1,
+        choices=range(1, 11),
+    )
+    parser.add_argument(
         "-m",
         "--multiclass",
         action="store_true",
@@ -388,7 +397,7 @@ def main():
     now = datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     results_file.write(
-        f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.max_features}\n"
+        f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.max_features}\nIterations: {args.iterations}\n"
     )
 
     # Store metrics across all iterations and folds
@@ -408,7 +417,7 @@ def main():
         if not args.multiclass:
             boolean_data = pd.read_csv("boolean_datasets/boolean_" + disease + ".csv")
             results_file.write(f"\n{disease}\n")
-        for iteration in range(1, 11):
+        for iteration in range(1, args.iterations + 1):
             print("\n\nIteration ", iteration)
             # Store metrics for current iteration
             iter_metrics = {
@@ -521,7 +530,7 @@ def main():
             avg_sens = np.mean(all_metrics[method]["sensitivity"])
 
             result_line = (
-                f"{method_name} 100 folds:\t\t{avg_acc:.3f} "
+                f"{method_name} {args.iterations * 10} folds:\t\t{avg_acc:.3f} "
                 + f"(F1: {avg_f1:.3f}, sens: {avg_sens:.3f})"
             )
 
