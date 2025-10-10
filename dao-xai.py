@@ -102,8 +102,44 @@ def get_optimal_classifier_formula(train, median_values):
     for predictor in one_predictors:
         for i, val in enumerate(predictor):
             classifier[train.columns[i]] = {"value": val, "type": "boolean"}
+    support, confidence = support_and_confidence(classifier, train)
+    return formula, (classifier, support, confidence)
 
-    return formula, classifier
+
+# Calculate support (number of true positives / total number of instances)
+# and confidence (number of true positives / number of positive predictions)
+def support_and_confidence(classifier, data):
+    X = data.iloc[:, :-1].values.tolist()
+    y = data.iloc[:, -1].values.tolist()
+
+    true_positives = 0
+    false_positives = 0
+    total_positives = 0
+
+    for i in range(len(y)):
+        if y[i] == 1:
+            total_positives += 1
+
+        prediction = 1
+        for feature, condition in classifier.items():
+            col_index = data.columns.get_loc(feature)
+            if X[i][col_index] != condition["value"]:
+                prediction = 0
+                break
+
+        if prediction == 1 and y[i] == 1:
+            true_positives += 1
+        elif prediction == 1 and y[i] == 0:
+            false_positives += 1
+
+    support = true_positives / len(y) if len(y) > 0 else 0
+    confidence = (
+        true_positives / (true_positives + false_positives)
+        if (true_positives + false_positives) > 0
+        else 0
+    )
+
+    return support, confidence
 
 
 # Returns predictions for the given test set with the given DAO-XAI classifier dict
@@ -161,7 +197,7 @@ def dao_xai(boolean_train, boolean_test, median_values, max_features):
             local_train, local_validation = feature_selection(
                 local_train, local_validation, i + 1, method
             )
-            formula, classifier = get_optimal_classifier_formula(
+            formula, (classifier, support, confidence) = get_optimal_classifier_formula(
                 local_train, median_values
             )
             predictions = predict_with_classifier_formula(classifier, local_validation)
@@ -183,12 +219,12 @@ def dao_xai(boolean_train, boolean_test, median_values, max_features):
     local_train_validation, local_test = feature_selection(
         local_train_validation, local_test, best_n_features, best_method
     )
-    formula, classifier = get_optimal_classifier_formula(
+    formula, (classifier, support, confidence) = get_optimal_classifier_formula(
         local_train_validation, median_values
     )
     predictions = predict_with_classifier_formula(classifier, local_test)
 
-    return formula, classifier, predictions
+    return formula, (classifier, support, confidence), predictions
 
 
 # Runs DAO-XAI multiclass classification with the given dict of classifiers
@@ -197,21 +233,26 @@ def dao_xai(boolean_train, boolean_test, median_values, max_features):
 def dao_xai_multiclass(boolean_test, classifiers):
     classifier_predictions = {}
     for disease in classifiers.keys():
+        classifier, support, confidence = classifiers[disease]
         classifier_predictions[disease] = predict_with_classifier_formula(
-            classifiers[disease], boolean_test
+            classifier, boolean_test
         )
 
-    # For now, we break ties (where multiple classifiers predict positive) by just arbitrarily taking the first positive prediction
-    # If the row satisfies none of the classifier rules, we predict "none"
+    # Break ties (where multiple classifiers predict positive) by choosing the classifier with highest confidence
     final_predictions = []
     for i in range(len(boolean_test.iloc[:, -1])):
         predicted = 0
+        highest_confidence = 0
+
         for disease, predictions in classifier_predictions.items():
             if predictions[i] == 1:
-                predicted = disease
-                break
+                _, _, confidence = classifiers[disease]
+                if confidence > highest_confidence:
+                    highest_confidence = confidence
+                    predicted = disease
+
         if predicted == 0:
-            predicted = "none"
+            predicted = "Menieres_disease_vertigo"  # Default prediction if no classifier predicts positive
         final_predictions.append(predicted)
 
     return final_predictions
@@ -262,7 +303,7 @@ def predict_dataset(
         boolean_data.iloc[test_index],
     )
 
-    formula, classifier, predictions = dao_xai(
+    formula, (classifier, support, confidence), predictions = dao_xai(
         boolean_train, boolean_test, median_values, args.max_features
     )
 
@@ -277,7 +318,7 @@ def predict_dataset(
 
     if verbose and results_file:
         results_file.write(
-            f"Example formula: {format_formula(formula)} (accuracy: {accuracy:.3f}, F1: {f1:.3f}, sensitivity: {sensitivity:.3f})\n"
+            f"Example formula: {format_formula(formula)} (support: {support:.3f}, confidence: {confidence:.3f}) (accuracy: {accuracy:.3f}, F1: {f1:.3f}, sensitivity: {sensitivity:.3f})\n"
         )
 
     return results
