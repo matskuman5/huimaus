@@ -380,14 +380,16 @@ def main():
         results_filename = "results.txt"
     else:
         results_filename = "results_binary.txt"
-    results_file = open(results_filename, "w")
 
     # Write current time
     now = datetime.now()
     current_time = now.strftime("%Y-%m-%d %H:%M:%S")
-    results_file.write(
-        f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.max_features}\nIterations: {args.iterations}\n"
-    )
+
+    # Write header information once at the beginning
+    with open(results_filename, "w") as results_file:
+        results_file.write(
+            f"{current_time}\nMulticlass: {args.multiclass}\nMax features: {args.max_features}\nIterations: {args.iterations}\n"
+        )
 
     # Store metrics across all iterations and folds
     all_metrics = {
@@ -403,9 +405,19 @@ def main():
         classes = datasets
 
     for disease in classes:
+        disease_metrics = {
+            "dao-xai": {"accuracy": [], "f1": [], "sensitivity": []},
+            "baseline": {"accuracy": [], "f1": [], "sensitivity": []},
+            "rf": {"accuracy": [], "f1": [], "sensitivity": []},
+            "xgboost": {"accuracy": [], "f1": [], "sensitivity": []},
+        }
+
         if not args.multiclass:
             boolean_data = pd.read_csv("boolean_datasets/boolean_" + disease + ".csv")
-            results_file.write(f"\n{disease}\n")
+            # Append to file for each disease
+            with open(results_filename, "a") as results_file:
+                results_file.write(f"\n{disease}\n")
+
         for iteration in range(1, args.iterations + 1):
             print("\n\nIteration ", iteration)
             # Store metrics for current iteration
@@ -449,15 +461,17 @@ def main():
                             classifiers[disease] = classifier
                 # For binary classification, just report the results for the given disease
                 else:
-                    results = predict_dataset(
-                        train_index,
-                        test_index,
-                        boolean_data,
-                        median_values,
-                        args,
-                        verbose,
-                        results_file,
-                    )
+                    # Open file for writing each time to append data
+                    with open(results_filename, "a") as results_file:
+                        results = predict_dataset(
+                            train_index,
+                            test_index,
+                            boolean_data,
+                            median_values,
+                            args,
+                            verbose,
+                            results_file,
+                        )
 
                     numeric_data = pd.read_csv("datasets/" + disease + ".csv")
                     other_results = other_classifiers(
@@ -474,6 +488,9 @@ def main():
                         all_metrics[method]["accuracy"].append(accuracy)
                         all_metrics[method]["f1"].append(f1)
                         all_metrics[method]["sensitivity"].append(sensitivity)
+                        disease_metrics[method]["accuracy"].append(accuracy)
+                        disease_metrics[method]["f1"].append(f1)
+                        disease_metrics[method]["sensitivity"].append(sensitivity)
                     continue
 
                 # Predict using dao-xai multiclass
@@ -500,6 +517,9 @@ def main():
                     all_metrics[method]["accuracy"].append(accuracy)
                     all_metrics[method]["f1"].append(f1)
                     all_metrics[method]["sensitivity"].append(sensitivity)
+                    disease_metrics[method]["accuracy"].append(accuracy)
+                    disease_metrics[method]["f1"].append(f1)
+                    disease_metrics[method]["sensitivity"].append(sensitivity)
 
             print("\n---10CV---")
             for method in ["dao-xai", "baseline", "rf", "xgboost"]:
@@ -511,9 +531,32 @@ def main():
                 )
 
         print("-----------\n")
-        print("\n---Overall---")
+        print(f"\n---{disease} Results---")
 
-        # Print and write overall results
+        # Save disease-specific results after each disease completes
+        with open(results_filename, "a") as results_file:
+            for method in ["dao-xai", "baseline", "rf", "xgboost"]:
+                method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
+                avg_acc = np.mean(disease_metrics[method]["accuracy"])
+                avg_f1 = np.mean(disease_metrics[method]["f1"])
+                avg_sens = np.mean(disease_metrics[method]["sensitivity"])
+
+                result_line = (
+                    f"{method_name} {args.iterations * 10} folds:\t\t{avg_acc:.3f} "
+                    + f"(F1: {avg_f1:.3f}, sens: {avg_sens:.3f})"
+                )
+
+                print(result_line)
+                results_file.write(result_line + "\n")
+
+            # Add a separator after each disease
+            results_file.write("-" * 50 + "\n")
+
+    print("\n---Overall Results---")
+
+    # Write overall results at the end
+    with open(results_filename, "a") as results_file:
+        results_file.write("\n\nOVERALL RESULTS\n")
         for method in ["dao-xai", "baseline", "rf", "xgboost"]:
             method_name = "DAOXAI" if method == "dao-xai" else method.capitalize()
             avg_acc = np.mean(all_metrics[method]["accuracy"])
