@@ -111,7 +111,7 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         print("Optimizing Random Forest hyperparameters...")
         study_rf = optuna.create_study(direction="maximize")
         study_rf.optimize(
-            objective_rf, n_trials=10, show_progress_bar=True
+            objective_rf, n_trials=100, show_progress_bar=True
         )  # Reduced trials for faster execution
         best_rf_params = study_rf.best_params
         print(f"Best Random Forest parameters: {best_rf_params}")
@@ -129,7 +129,7 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         print("Optimizing XGBoost hyperparameters...")
         study_xgb = optuna.create_study(direction="maximize")
         study_xgb.optimize(
-            objective_xgb, n_trials=10, show_progress_bar=True
+            objective_xgb, n_trials=100, show_progress_bar=True
         )  # Reduced trials for faster execution
         best_xgb_params = study_xgb.best_params
         print(f"Best XGBoost parameters: {best_xgb_params}")
