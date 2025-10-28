@@ -1,5 +1,6 @@
 import pandas as pd
 import argparse
+from sklearn.discriminant_analysis import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.feature_selection import SelectKBest, f_classif, chi2
 from sympy import symbols, Eq, Or, And, simplify_logic, Symbol, Not
@@ -314,6 +315,34 @@ def predict_dataset(
     return results
 
 
+def standardize_data(train: pd.DataFrame, test: pd.DataFrame):
+    """
+    Standardizes data by scaling it. Has no effect on tree-based models;
+    this is simply to ensure that the pipeline is the same for all models.
+    """
+    X_train = train.iloc[:, :-1]
+    y_train = train.iloc[:, -1]
+    X_test = test.iloc[:, :-1]
+    y_test = test.iloc[:, -1]
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Convert back to DataFrames and combine with target
+    X_train_scaled = pd.DataFrame(
+        X_train_scaled, index=X_train.index, columns=X_train.columns
+    )
+    X_test_scaled = pd.DataFrame(
+        X_test_scaled, index=X_test.index, columns=X_test.columns
+    )
+
+    scaled_train = pd.concat([X_train_scaled, y_train], axis=1)
+    scaled_test = pd.concat([X_test_scaled, y_test], axis=1)
+
+    return scaled_train, scaled_test
+
+
 def main():
 
     parser = argparse.ArgumentParser(description="Load binary matrix")
@@ -474,9 +503,12 @@ def main():
                         )
 
                     numeric_data = pd.read_csv("datasets/" + disease + ".csv")
+                    scaled_numeric_train, scaled_numeric_test = standardize_data(
+                        numeric_data.iloc[train_index], numeric_data.iloc[test_index]
+                    )
                     other_results = other_classifiers(
-                        numeric_data.iloc[train_index],
-                        numeric_data.iloc[test_index],
+                        scaled_numeric_train,
+                        scaled_numeric_test,
                         args.optimize,
                     )
                     results.update(other_results)
@@ -499,6 +531,16 @@ def main():
                 )
                 results["dao-xai"] = classification_metrics(
                     full_numeric_data.iloc[test_index].iloc[:, -1], predictions
+                )
+
+                full_scaled_numeric_train, full_scaled_numeric_test = standardize_data(
+                    full_numeric_data.iloc[train_index],
+                    full_numeric_data.iloc[test_index],
+                )
+                other_results = other_classifiers(
+                    full_scaled_numeric_train,
+                    full_scaled_numeric_test,
+                    args.optimize,
                 )
 
                 other_results = other_classifiers(
