@@ -2,3 +2,4 @@
 *.mat
 *.txt
 __pycache__
+!huimaus_clean.csv
