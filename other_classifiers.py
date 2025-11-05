@@ -5,6 +5,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
+from tabpfn import TabPFNClassifier
 from utils import SEED, classification_metrics
 
 
@@ -26,6 +27,13 @@ def other_classifiers(numeric_train, numeric_test, optimize):
     print(
         f"Baseline test metrics - accuracy: {results['baseline'][0]:.3f}, F1: {results['baseline'][1]:.3f}, sensitivity: {results['baseline'][2]:.3f}"
     )
+
+    tabpfn = TabPFNClassifier()
+    tabpfn.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
+    predictions = tabpfn.predict(numeric_test.iloc[:, :-1])
+    results["tabpfn"] = classification_metrics(numeric_test.iloc[:, -1], predictions)
+
+    print(results["tabpfn"])
 
     # Split training data for hyperparameter optimization
     X_train, X_val, y_train, y_val = train_test_split(
@@ -56,16 +64,6 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         params = {
             "n_estimators": trial.suggest_int("n_estimators", 10, 3000, log=True),
             "max_depth": trial.suggest_categorical("max_depth", max_depth_options),
-            "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
-            "max_features": trial.suggest_categorical(
-                "max_features", max_features_options
-            ),
-            "min_samples_split": trial.suggest_categorical("min_samples_split", [2, 3]),
-            "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 50),
-            "bootstrap": trial.suggest_categorical("bootstrap", [True, False]),
-            "min_impurity_decrease": trial.suggest_categorical(
-                "min_impurity_decrease", [0.0, 0.01, 0.02, 0.05]
-            ),
             "random_state": SEED,
         }
 
@@ -80,16 +78,6 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         params = {
             "max_depth": trial.suggest_int("max_depth", 1, 11),
             "n_estimators": trial.suggest_int("n_estimators", 100, 5900, step=200),
-            "min_child_weight": trial.suggest_float(
-                "min_child_weight", 1.0, 100.0, log=True
-            ),
-            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-            "learning_rate": trial.suggest_float("learning_rate", 1e-5, 0.7, log=True),
-            "colsample_bylevel": trial.suggest_float("colsample_bylevel", 0.5, 1.0),
-            "gamma": trial.suggest_float("gamma", 1e-8, 7.0, log=True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1.0, 4.0),
-            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100.0, log=True),
-            "random_state": SEED,
         }
 
         # XGBoost requires integer labels
