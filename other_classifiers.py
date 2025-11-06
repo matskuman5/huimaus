@@ -1,4 +1,5 @@
 import optuna
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score
@@ -33,7 +34,13 @@ def other_classifiers(numeric_train, numeric_test, optimize):
     predictions = tabpfn.predict(numeric_test.iloc[:, :-1])
     results["tabpfn"] = classification_metrics(numeric_test.iloc[:, -1], predictions)
 
-    print(results["tabpfn"])
+    dt = DecisionTreeClassifier(random_state=SEED)
+    dt.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
+    dt_predictions = dt.predict(numeric_test.iloc[:, :-1])
+    dt_accuracy, dt_f1, dt_sens = classification_metrics(
+        numeric_test.iloc[:, -1], dt_predictions
+    )
+    results["decision_tree"] = [dt_accuracy, dt_f1, dt_sens]
 
     # Split training data for hyperparameter optimization
     X_train, X_val, y_train, y_val = train_test_split(
