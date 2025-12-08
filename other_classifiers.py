@@ -14,6 +14,7 @@ from utils import SEED, classification_metrics
 # 1. Dummy classifier that always predicts the most frequent class
 # 2. Random Forest with hyperparameter tuning
 # 3. XGBoost with hyperparameter tuning
+# 4. TabPFN
 def other_classifiers(numeric_train, numeric_test, optimize):
     results = {}
 
@@ -34,14 +35,6 @@ def other_classifiers(numeric_train, numeric_test, optimize):
     predictions = tabpfn.predict(numeric_test.iloc[:, :-1])
     results["tabpfn"] = classification_metrics(numeric_test.iloc[:, -1], predictions)
 
-    dt = DecisionTreeClassifier(random_state=SEED)
-    dt.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
-    dt_predictions = dt.predict(numeric_test.iloc[:, :-1])
-    dt_accuracy, dt_f1, dt_sens = classification_metrics(
-        numeric_test.iloc[:, -1], dt_predictions
-    )
-    results["decision_tree"] = [dt_accuracy, dt_f1, dt_sens]
-
     # Split training data for hyperparameter optimization
     X_train, X_val, y_train, y_val = train_test_split(
         numeric_train.iloc[:, :-1],
@@ -51,6 +44,7 @@ def other_classifiers(numeric_train, numeric_test, optimize):
     )
 
     # Optimize Random Forest hyperparameters
+    # Space obtained from Grinsztajn, Oyallon and Varoquaux (2022)
     def objective_rf(trial):
         max_depth_options = [None, 2, 3, 4]
         max_features_options = [
@@ -67,24 +61,48 @@ def other_classifiers(numeric_train, numeric_test, optimize):
             0.8,
             0.9,
         ]
+        min_samples_split_options = [2, 3]
+        min_impurity_decrease_options = [0.0, 0.01, 0.02, 0.05]
 
         params = {
-            "n_estimators": trial.suggest_int("n_estimators", 10, 3000, log=True),
+            "n_estimators": trial.suggest_int("n_estimators", 9.5, 3000.5, log=True),
             "max_depth": trial.suggest_categorical("max_depth", max_depth_options),
-            "random_state": SEED,
+            "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
+            "max_features": trial.suggest_categorical(
+                "max_features", max_features_options
+            ),
+            "min_samples_split": trial.suggest_categorical(
+                "min_samples_split", min_samples_split_options
+            ),
+            "min_samples_leaf": trial.suggest_int(
+                "min_samples_leaf", 1.5, 50.5, log=True
+            ),
+            "bootstrap": trial.suggest_categorical("bootstrap", [True, False]),
+            "min_impurity_decrease": trial.suggest_categorical(
+                "min_impurity_decrease", min_impurity_decrease_options
+            ),
         }
 
-        model = RandomForestClassifier(**params)
+        model = RandomForestClassifier(**params, random_state=SEED)
         model.fit(X_train, y_train)
         preds = model.predict(X_val)
         accuracy = accuracy_score(y_val, preds)
         return accuracy
 
     # Optimize XGBoost hyperparameters
+    # Space obtained from Grinsztajn, Oyallon and Varoquaux (2022)
     def objective_xgb(trial):
         params = {
             "max_depth": trial.suggest_int("max_depth", 1, 11),
             "n_estimators": trial.suggest_int("n_estimators", 100, 5900, step=200),
+            "min_child_weight": trial.suggest_int("min_child_weight", 1, 100, log=True),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "eta": trial.suggest_float("eta", 1e-5, 0.7, log=True),
+            "colsample_bylevel": trial.suggest_float("colsample_bylevel", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+            "gamma": trial.suggest_float("gamma", 1e-8, 7, log=True),
+            "lambda": trial.suggest_float("lambda", 1, 4, log=True),
+            "alpha": trial.suggest_float("alpha", 1e-8, 1e2, log=True),
         }
 
         # XGBoost requires integer labels
@@ -92,7 +110,7 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         y_train_encoded = le.fit_transform(y_train)
         y_val_encoded = le.transform(y_val)
 
-        model = XGBClassifier(**params)
+        model = XGBClassifier(**params, random_state=SEED)
         model.fit(X_train, y_train_encoded)
         preds = model.predict(X_val)
         accuracy = accuracy_score(y_val_encoded, preds)
