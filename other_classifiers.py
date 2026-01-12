@@ -1,4 +1,5 @@
 import optuna
+import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.dummy import DummyClassifier
@@ -15,25 +16,28 @@ from utils import SEED, classification_metrics
 # 2. Random Forest with hyperparameter tuning
 # 3. XGBoost with hyperparameter tuning
 # 4. TabPFN
-def other_classifiers(numeric_train, numeric_test, optimize):
+def other_classifiers(numeric_train, numeric_test, optimize, class_labels=None):
+    """
+    Returns dict of {method: (accuracy, f1_macro, sens_dict)} where sens_dict
+    maps class labels to per-class sensitivities (matching manuscript Table 3/6).
+    """
     results = {}
+
+    # Get consistent class labels for all metrics
+    if class_labels is None:
+        class_labels = np.unique(numeric_train.iloc[:, -1])
 
     # Compare against baseline and random forest
     dummy = DummyClassifier(strategy="most_frequent")
     dummy.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
     dummy_predictions = dummy.predict(numeric_test.iloc[:, :-1])
     results["baseline"] = classification_metrics(
-        numeric_test.iloc[:, -1], dummy_predictions
+        numeric_test.iloc[:, -1], dummy_predictions, class_labels=class_labels
     )
 
     print(
-        f"Baseline test metrics - accuracy: {results['baseline'][0]:.3f}, F1: {results['baseline'][1]:.3f}, sensitivity: {results['baseline'][2]:.3f}"
+        f"Baseline test metrics - accuracy: {results['baseline'][0]:.3f}, F1: {results['baseline'][1]:.3f}"
     )
-
-    tabpfn = TabPFNClassifier()
-    tabpfn.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
-    predictions = tabpfn.predict(numeric_test.iloc[:, :-1])
-    results["tabpfn"] = classification_metrics(numeric_test.iloc[:, -1], predictions)
 
     # Split training data for hyperparameter optimization
     X_train, X_val, y_train, y_val = train_test_split(
@@ -134,9 +138,9 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         rf.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
         rf_predictions = rf.predict(numeric_test.iloc[:, :-1])
         rf_accuracy, rf_f1, rf_sens = classification_metrics(
-            numeric_test.iloc[:, -1], rf_predictions
+            numeric_test.iloc[:, -1], rf_predictions, class_labels=class_labels
         )
-        results["rf"] = [rf_accuracy, rf_f1, rf_sens]
+        results["rf"] = (rf_accuracy, rf_f1, rf_sens)
 
         # Run hyperparameter optimization for XGBoost
         print("Optimizing XGBoost hyperparameters...")
@@ -147,47 +151,66 @@ def other_classifiers(numeric_train, numeric_test, optimize):
         best_xgb_params = study_xgb.best_params
         print(f"Best XGBoost parameters: {best_xgb_params}")
 
-        # XGBoost requires integer labels for some reason
+        # XGBoost requires integer labels
         le = LabelEncoder()
-        int_y_train = le.fit_transform(numeric_train.iloc[:, -1])
+        le.fit(class_labels)  # Fit on all class labels for consistency
+        int_y_train = le.transform(numeric_train.iloc[:, -1])
         int_y_test = le.transform(numeric_test.iloc[:, -1])
+        int_class_labels = le.transform(class_labels)
 
         # Train XGBoost with best parameters on full training data
         bst = XGBClassifier(**best_xgb_params, random_state=SEED)
         bst.fit(numeric_train.iloc[:, :-1], int_y_train)
         bst_predictions = bst.predict(numeric_test.iloc[:, :-1])
-        bst_accuracy, bst_f1, bst_sens = classification_metrics(
-            int_y_test, bst_predictions
+        bst_accuracy, bst_f1, bst_sens_encoded = classification_metrics(
+            int_y_test, bst_predictions, class_labels=int_class_labels
         )
-        results["xgboost"] = [bst_accuracy, bst_f1, bst_sens]
+        # Map encoded labels back to original labels
+        bst_sens = {label: bst_sens_encoded[enc] for label, enc in zip(class_labels, int_class_labels)}
+        results["xgboost"] = (bst_accuracy, bst_f1, bst_sens)
     else:
         # Train Random Forest with default parameters
         rf = RandomForestClassifier(random_state=SEED)
         rf.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
         rf_predictions = rf.predict(numeric_test.iloc[:, :-1])
         rf_accuracy, rf_f1, rf_sens = classification_metrics(
-            numeric_test.iloc[:, -1], rf_predictions
+            numeric_test.iloc[:, -1], rf_predictions, class_labels=class_labels
         )
-        results["rf"] = [rf_accuracy, rf_f1, rf_sens]
+        results["rf"] = (rf_accuracy, rf_f1, rf_sens)
 
         # Train XGBoost with default parameters
         le = LabelEncoder()
-        int_y_train = le.fit_transform(numeric_train.iloc[:, -1])
+        le.fit(class_labels)  # Fit on all class labels for consistency
+        int_y_train = le.transform(numeric_train.iloc[:, -1])
         int_y_test = le.transform(numeric_test.iloc[:, -1])
+        int_class_labels = le.transform(class_labels)
 
         bst = XGBClassifier(random_state=SEED)
         bst.fit(numeric_train.iloc[:, :-1], int_y_train)
         bst_predictions = bst.predict(numeric_test.iloc[:, :-1])
-        bst_accuracy, bst_f1, bst_sens = classification_metrics(
-            int_y_test, bst_predictions
+        bst_accuracy, bst_f1, bst_sens_encoded = classification_metrics(
+            int_y_test, bst_predictions, class_labels=int_class_labels
         )
-        results["xgboost"] = [bst_accuracy, bst_f1, bst_sens]
+        # Map encoded labels back to original labels
+        bst_sens = {label: bst_sens_encoded[enc] for label, enc in zip(class_labels, int_class_labels)}
+        results["xgboost"] = (bst_accuracy, bst_f1, bst_sens)
 
     print(
-        f"Random Forest test metrics - accuracy: {rf_accuracy:.3f}, F1: {rf_f1:.3f}, sensitivity: {rf_sens:.3f}"
+        f"Random Forest test metrics - accuracy: {rf_accuracy:.3f}, F1: {rf_f1:.3f}"
     )
     print(
-        f"XGBoost test metrics - accuracy: {bst_accuracy:.3f}, F1: {bst_f1:.3f}, sensitivity: {bst_sens:.3f}"
+        f"XGBoost test metrics - accuracy: {bst_accuracy:.3f}, F1: {bst_f1:.3f}"
+    )
+
+    tabpfn = TabPFNClassifier()
+    tabpfn.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
+    predictions = tabpfn.predict(numeric_test.iloc[:, :-1])
+    results["tabpfn"] = classification_metrics(
+        numeric_test.iloc[:, -1], predictions, class_labels=class_labels
+    )
+
+    print(
+        f"TabPFN test metrics - accuracy: {results['tabpfn'][0]:.3f}, F1: {results['tabpfn'][1]:.3f}"
     )
 
     return results

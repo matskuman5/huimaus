@@ -6,8 +6,35 @@ import numpy as np
 from datetime import datetime
 from utils import SEED, classification_metrics
 from other_classifiers import other_classifiers
-from optimal_rule_list import OptimalRuleList
-from ideal_dnf import IdealDNF
+
+# from optimal_rule_list import OptimalRuleList
+# from ideal_dnf import IdealDNF
+
+# Disease class labels and their acronyms
+DISEASE_ACRONYMS = {
+    "Acoustic_neurinoma": "ANE",
+    "Benign_positional_vertigo": "BPV",
+    "Menieres_disease_vertigo": "MEN",
+    "Sudden_deafness": "SUD",
+    "Traumatic_vertigo": "TRA",
+    "Vestibular_neuritis": "VNE",
+    "Benign_recurrent_vertigo": "BRV",
+    "Vestibulopatia": "VES",
+    "Central_lesion": "CL",
+}
+
+# Ordered list matching manuscript Table 3/6 columns
+DISEASE_ORDER = [
+    "Acoustic_neurinoma",
+    "Benign_positional_vertigo",
+    "Menieres_disease_vertigo",
+    "Sudden_deafness",
+    "Traumatic_vertigo",
+    "Vestibular_neuritis",
+    "Benign_recurrent_vertigo",
+    "Vestibulopatia",
+    "Central_lesion",
+]
 
 
 def standardize_data(train: pd.DataFrame, test: pd.DataFrame):
@@ -38,65 +65,40 @@ def standardize_data(train: pd.DataFrame, test: pd.DataFrame):
     return scaled_train, scaled_test
 
 
-def get_and_write_results(boolean_data, numeric_data, args, results_filename):
+def get_and_write_results(
+    boolean_data, numeric_data, args, results_filename, class_labels=None
+):
+    """
+    Run cross-validation and report results matching manuscript Tables 3/6.
+
+    Results format: per-class sensitivities, accuracy, F1_macro
+    """
     all_results = []
+
+    # Get class labels from data if not provided
+    if class_labels is None:
+        target_col = numeric_data.columns[-1]
+        if target_col.startswith("CV"):
+            # Find the actual target column (last non-CV column)
+            non_cv_cols = [c for c in numeric_data.columns if not c.startswith("CV")]
+            target_col = non_cv_cols[-1]
+        class_labels = np.array(sorted(numeric_data[target_col].unique()))
+
     for iteration in range(1, args.iterations + 1):
         iter_results = []
         for fold in range(1, 11):
             print(f"\nIteration {iteration}, Fold {fold}")
             # Get indices for train and test sets based on CV column
-            test_index = numeric_data[numeric_data[f"cv{iteration}"] == fold].index
-            train_index = numeric_data[numeric_data[f"cv{iteration}"] != fold].index
+            test_index = numeric_data[numeric_data[f"CV{iteration}"] == fold].index
+            train_index = numeric_data[numeric_data[f"CV{iteration}"] != fold].index
 
             # drop cv columns
             numeric_data_cleaned = numeric_data.drop(
-                columns=[col for col in numeric_data.columns if col.startswith("cv")]
+                columns=[col for col in numeric_data.columns if col.startswith("CV")]
             )
             boolean_data_cleaned = boolean_data.drop(
-                columns=[col for col in boolean_data.columns if col.startswith("cv")]
+                columns=[col for col in boolean_data.columns if col.startswith("CV")]
             )
-
-            orl = OptimalRuleList(
-                max_literals=args.max_literals,
-                timeout=5,
-            )
-            icm = IdealDNF(
-                k=args.max_features,
-                method=chi2,
-            )
-            orl.fit(
-                boolean_data_cleaned.iloc[train_index].iloc[:, :-1],
-                boolean_data_cleaned.iloc[train_index].iloc[:, -1],
-            )
-            icm.fit(
-                boolean_data_cleaned.iloc[train_index].iloc[:, :-1],
-                boolean_data_cleaned.iloc[train_index].iloc[:, -1],
-            )
-            orl_predictions = orl.predict(
-                boolean_data_cleaned.iloc[test_index].iloc[:, :-1]
-            )
-            icm_predictions = icm.predict(
-                boolean_data_cleaned.iloc[test_index].iloc[:, :-1]
-            )
-
-            fucking_shit = {}
-            fucking_shit["orl"] = classification_metrics(
-                boolean_data_cleaned.iloc[test_index].iloc[:, -1], orl_predictions
-            )
-            fucking_shit["icm"] = classification_metrics(
-                boolean_data_cleaned.iloc[test_index].iloc[:, -1], icm_predictions
-            )
-
-            print(
-                f"\nORL Formula: {orl.get_formula()}\n accuracy: {fucking_shit['orl'][0]:.3f}, F1: {fucking_shit['orl'][1]:.3f}, sensitivity: {fucking_shit['orl'][2]:.3f}"
-            )
-            print(
-                f"\nICM Formula: {icm.get_formula()}\n accuracy: {fucking_shit['icm'][0]:.3f}, F1: {fucking_shit['icm'][1]:.3f}, sensitivity: {fucking_shit['icm'][2]:.3f}"
-            )
-
-            if fold == 1:
-                orl_formula = orl.get_formula()
-                icm_formula = icm.get_formula()
 
             full_scaled_numeric_train, full_scaled_numeric_test = standardize_data(
                 numeric_data_cleaned.iloc[train_index],
@@ -106,73 +108,94 @@ def get_and_write_results(boolean_data, numeric_data, args, results_filename):
                 full_scaled_numeric_train,
                 full_scaled_numeric_test,
                 args.optimize,
+                class_labels=class_labels,
             )
 
             iter_results.append(other_results)
-            iter_results.append(fucking_shit)
             all_results.append(other_results)
-            all_results.append(fucking_shit)
 
         print("\n---10CV---")
-        # Aggregate results across all folds for this iteration
-        method_results = {}
-        for fold_results in iter_results:
-            for method, metrics in fold_results.items():
-                if method not in method_results:
-                    method_results[method] = {
-                        "accuracy": [],
-                        "f1": [],
-                        "sensitivity": [],
-                    }
-                method_results[method]["accuracy"].append(metrics[0])
-                method_results[method]["f1"].append(metrics[1])
-                method_results[method]["sensitivity"].append(metrics[2])
-
-        # Print averages for this iteration
-        for method in method_results.keys():
-            accuracy = np.mean(method_results[method]["accuracy"])
-            f1 = np.mean(method_results[method]["f1"])
-            sensitivity = np.mean(method_results[method]["sensitivity"])
-            print(
-                f"{method}: {accuracy:.3f} "
-                + f"(F1: {f1:.3f}, "
-                + f"sens: {sensitivity:.3f})"
-            )
+        _print_aggregated_results(iter_results, class_labels)
 
     print("\n---ALL ITERATIONS---")
+    _print_and_write_final_results(all_results, class_labels, results_filename)
+
+
+def _print_aggregated_results(results_list, class_labels):
+    """Print aggregated results for a set of folds/iterations."""
+    method_results = _aggregate_results(results_list, class_labels)
+
+    for method, metrics in method_results.items():
+        acc = np.mean(metrics["accuracy"])
+        f1 = np.mean(metrics["f1"])
+        sens_str = " | ".join(
+            f"{DISEASE_ACRONYMS.get(label, label[:3])}: {np.mean(metrics['sens'][label])*100:.1f}"
+            for label in class_labels
+            if label in metrics["sens"]
+        )
+        print(f"{method}: ACC={acc*100:.1f}% F1={f1*100:.1f}% | {sens_str}")
+
+
+def _print_and_write_final_results(all_results, class_labels, results_filename):
+    """Print and write final aggregated results."""
+    method_results = _aggregate_results(all_results, class_labels)
+
+    # Build header matching manuscript format
+    header_parts = ["Method"]
+    for label in class_labels:
+        header_parts.append(DISEASE_ACRONYMS.get(label, label[:3]))
+    header_parts.extend(["ACC", "F1_macro"])
+    header = "\t".join(header_parts)
+
+    print(header)
     with open(results_filename, "a") as results_file:
-        # Aggregate results across all iterations
-        overall_method_results = {}
-        for iter_results in all_results:
-            for method, metrics in iter_results.items():
-                if method not in overall_method_results:
-                    overall_method_results[method] = {
-                        "accuracy": [],
-                        "f1": [],
-                        "sensitivity": [],
-                    }
-                overall_method_results[method]["accuracy"].append(metrics[0])
-                overall_method_results[method]["f1"].append(metrics[1])
-                overall_method_results[method]["sensitivity"].append(metrics[2])
+        results_file.write("\n" + header + "\n")
 
-        # Print averages across all iterations
-        for method in overall_method_results.keys():
-            accuracy = np.mean(overall_method_results[method]["accuracy"])
-            f1 = np.mean(overall_method_results[method]["f1"])
-            sensitivity = np.mean(overall_method_results[method]["sensitivity"])
-            result_line = (
-                f"{method}: {accuracy:.3f} "
-                + f"(F1: {f1:.3f}, "
-                + f"sens: {sensitivity:.3f})\n"
-            )
-            print(result_line)
-            results_file.write(result_line)
+        for method, metrics in method_results.items():
+            acc = np.mean(metrics["accuracy"]) * 100
+            f1 = np.mean(metrics["f1"]) * 100
 
-        results_file.write("\nORL Formula:\n")
-        results_file.write(orl_formula)
+            row_parts = [method]
+            for label in class_labels:
+                if label in metrics["sens"]:
+                    sens = np.mean(metrics["sens"][label]) * 100
+                    row_parts.append(f"{sens:.1f}")
+                else:
+                    row_parts.append("N/A")
+            row_parts.extend([f"{acc:.1f}", f"{f1:.1f}"])
 
-        results_file.write("\n\nICM Formula:\n")
-        results_file.write(icm_formula)
+            row = "\t".join(row_parts)
+            print(row)
+            results_file.write(row + "\n")
+
+
+def _aggregate_results(results_list, class_labels):
+    """
+    Aggregate results from multiple folds/iterations.
+
+    Returns dict: {method: {"accuracy": [...], "f1": [...], "sens": {label: [...]}}}
+    """
+    method_results = {}
+
+    for fold_results in results_list:
+        for method, metrics in fold_results.items():
+            accuracy, f1, sens_dict = metrics
+
+            if method not in method_results:
+                method_results[method] = {
+                    "accuracy": [],
+                    "f1": [],
+                    "sens": {label: [] for label in class_labels},
+                }
+
+            method_results[method]["accuracy"].append(accuracy)
+            method_results[method]["f1"].append(f1)
+
+            for label in class_labels:
+                if label in sens_dict:
+                    method_results[method]["sens"][label].append(sens_dict[label])
+
+    return method_results
 
 
 def main():
@@ -246,7 +269,16 @@ def main():
 
         full_boolean_data = pd.read_csv("huimaus_clean.csv")
         full_numeric_data = pd.read_csv("huimausdata.csv")
-        get_and_write_results(full_boolean_data, full_numeric_data, args, "results.txt")
+
+        # Use ordered class labels
+        class_labels = np.array(DISEASE_ORDER)
+        get_and_write_results(
+            full_boolean_data,
+            full_numeric_data,
+            args,
+            "results.txt",
+            class_labels=class_labels,
+        )
 
     else:
         for disease in datasets:
