@@ -42,7 +42,7 @@ def get_and_write_results(boolean_data, numeric_data, args, results_filename):
     all_results = []
     for iteration in range(1, args.iterations + 1):
         iter_results = []
-        for fold in range(1, 10):
+        for fold in range(1, 11):
             print(f"\nIteration {iteration}, Fold {fold}")
             # Get indices for train and test sets based on CV column
             test_index = numeric_data[numeric_data[f"cv{iteration}"] == fold].index
