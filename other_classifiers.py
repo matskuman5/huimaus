@@ -166,7 +166,10 @@ def other_classifiers(numeric_train, numeric_test, optimize, class_labels=None):
             int_y_test, bst_predictions, class_labels=int_class_labels
         )
         # Map encoded labels back to original labels
-        bst_sens = {label: bst_sens_encoded[enc] for label, enc in zip(class_labels, int_class_labels)}
+        bst_sens = {
+            label: bst_sens_encoded[enc]
+            for label, enc in zip(class_labels, int_class_labels)
+        }
         results["xgboost"] = (bst_accuracy, bst_f1, bst_sens)
     else:
         # Train Random Forest with default parameters
@@ -192,15 +195,14 @@ def other_classifiers(numeric_train, numeric_test, optimize, class_labels=None):
             int_y_test, bst_predictions, class_labels=int_class_labels
         )
         # Map encoded labels back to original labels
-        bst_sens = {label: bst_sens_encoded[enc] for label, enc in zip(class_labels, int_class_labels)}
+        bst_sens = {
+            label: bst_sens_encoded[enc]
+            for label, enc in zip(class_labels, int_class_labels)
+        }
         results["xgboost"] = (bst_accuracy, bst_f1, bst_sens)
 
-    print(
-        f"Random Forest test metrics - accuracy: {rf_accuracy:.3f}, F1: {rf_f1:.3f}"
-    )
-    print(
-        f"XGBoost test metrics - accuracy: {bst_accuracy:.3f}, F1: {bst_f1:.3f}"
-    )
+    print(f"Random Forest test metrics - accuracy: {rf_accuracy:.3f}, F1: {rf_f1:.3f}")
+    print(f"XGBoost test metrics - accuracy: {bst_accuracy:.3f}, F1: {bst_f1:.3f}")
 
     tabpfn = TabPFNClassifier()
     tabpfn.fit(numeric_train.iloc[:, :-1], numeric_train.iloc[:, -1])
